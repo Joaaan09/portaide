@@ -1,0 +1,264 @@
+/* Tool-cards del chat (medidas del mockup canónico; colores DESIGN.md §3/§6) */
+
+/* ---------- Piezas comunes ---------- */
+
+/* "Read <ruta>" / "Edit <archivo>" en mono (DESIGN.md §2: rutas = JetBrains Mono) */
+.toolLabel {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11.5px;
+  color: var(--text);
+}
+
+.toolFile {
+  color: var(--dim);
+}
+
+.toolMeta {
+  font-size: 10px;
+  color: var(--faint);
+  white-space: nowrap;
+}
+
+/* ---------- Read ---------- */
+
+.read {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 11px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.readIcon {
+  font-size: 12px;
+  line-height: 1;
+  color: var(--blue);
+}
+
+/* ---------- Edit ---------- */
+
+.edit {
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.editHeader {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 11px;
+  border-bottom: 1px solid var(--border);
+}
+
+.editIcon {
+  font-size: 12px;
+  line-height: 1;
+  color: var(--accent);
+}
+
+/* Contadores +N/−M — mono por DESIGN.md §2 (cifras técnicas) */
+.editAdd,
+.editDel {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+}
+
+.editAdd {
+  color: var(--green);
+}
+
+.editDel {
+  color: var(--red);
+}
+
+/* Diff (DESIGN.md §3: los rgba de fondo son los valores sancionados para diffs) */
+.diff {
+  padding: 6px 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  line-height: 18px;
+}
+
+.diff::-webkit-scrollbar {
+  display: none;
+}
+
+.diffLine {
+  display: flex;
+  padding: 0 10px;
+}
+
+.diffSign {
+  flex: none;
+  width: 16px;
+  text-align: center;
+  color: var(--faint);
+}
+
+.diffText {
+  white-space: pre;
+  color: var(--dim);
+}
+
+.diffAdd {
+  background: rgba(99, 230, 163, 0.09);
+}
+
+.diffAdd .diffSign,
+.diffAdd .diffText {
+  color: var(--green);
+}
+
+.diffDel {
+  background: rgba(255, 122, 144, 0.09);
+}
+
+.diffDel .diffSign,
+.diffDel .diffText {
+  color: var(--red);
+}
+
+/* Approve / Reject (mockup ~30px de alto → 40px táctiles, DESIGN.md §12;
+   el ancho flex:1 completa un objetivo cómodo) */
+.actions {
+  display: flex;
+  gap: 8px;
+  padding: 9px 11px;
+  border-top: 1px solid var(--border);
+}
+
+.approve,
+.reject {
+  flex: 1;
+  min-height: 40px;
+  padding: 8px;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.16s ease-out;
+}
+
+.approve {
+  border: 0;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.reject {
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--dim);
+}
+
+.approve:active,
+.reject:active {
+  transform: scale(0.97);
+}
+
+.approve:focus-visible {
+  outline: 2px solid var(--accent2);
+  outline-offset: 2px;
+}
+
+.reject:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Estado tras decidir; fade corto para no aparecer de golpe (DESIGN.md §11) */
+.status {
+  margin: 0;
+  padding: 8px 11px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  font-weight: 600;
+  animation: statusIn 0.18s ease;
+}
+
+.statusApplied {
+  color: var(--green);
+}
+
+.statusRejected {
+  color: var(--red);
+}
+
+@keyframes statusIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ---------- Bash ---------- */
+
+/* Fondo #000 literal: sancionado en DESIGN.md §6 (card de terminal) */
+.bash {
+  border-radius: 10px;
+  background: #000;
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.bashHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 11px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.bashPrompt {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--green);
+}
+
+.bashCommand {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11.5px;
+  color: var(--text);
+}
+
+.bashOutput {
+  padding: 8px 11px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  line-height: 17px;
+}
+
+.bashLine {
+  white-space: pre-wrap;
+  color: var(--dim);
+}
+
+.bashLineOk {
+  color: var(--green);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .approve,
+  .reject {
+    transition: none;
+  }
+
+  .approve:active,
+  .reject:active {
+    transform: none;
+  }
+}

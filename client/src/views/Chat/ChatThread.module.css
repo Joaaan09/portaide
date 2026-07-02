@@ -1,0 +1,160 @@
+/* ChatThread — hilo del chat (medidas del mockup canónico) */
+
+/* El scroll vive aquí (DESIGN.md §5); scrollbar oculta como el mockup */
+.thread {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 15px 8px;
+  display: flex;
+  flex-direction: column;
+  scrollbar-width: none;
+}
+
+.thread::-webkit-scrollbar {
+  display: none;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Entrada sutil de cada item; en el primer render coincide con el fadein
+   de la vista (mismo timing), así que no se percibe doble */
+.userItem,
+.assistantItem {
+  display: flex;
+  animation: itemIn 0.18s ease;
+}
+
+.userItem {
+  justify-content: flex-end;
+}
+
+@keyframes itemIn {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Burbuja de usuario: derecha, --accent, radio 15/15/4/15 (DESIGN.md §6) */
+.userBubble {
+  margin: 0;
+  max-width: 82%;
+  padding: 10px 13px;
+  border-radius: 15px 15px 4px 15px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 13.5px;
+  line-height: 19px;
+  overflow-wrap: break-word;
+}
+
+/* ---------- Typing: tres puntos --accent, animación `dot` (DESIGN.md §11) ---------- */
+
+.typing {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 4px;
+}
+
+.typingDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: dot 1.2s infinite;
+}
+
+.typingDot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typingDot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes dot {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* ---------- Estado vacío (chat nuevo) ---------- */
+
+.empty {
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 24px;
+  text-align: center;
+}
+
+.emptyIcon {
+  width: 34px;
+  height: 34px;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  font-size: 15px;
+  line-height: 1;
+  color: var(--accent);
+}
+
+.emptyTitle {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--dim);
+}
+
+.emptyHint {
+  margin: 0;
+  max-width: 32ch;
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--faint);
+}
+
+/* Motion reducido: sin desplazamiento en la entrada; puntos estáticos atenuados */
+@media (prefers-reduced-motion: reduce) {
+  .userItem,
+  .assistantItem {
+    animation: itemInStill 0.15s ease;
+  }
+
+  .typingDot {
+    animation: none;
+    opacity: 0.55;
+  }
+}
+
+@keyframes itemInStill {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

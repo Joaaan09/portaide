@@ -1,0 +1,23 @@
+/* ChatView — columna de la vista: cabecera fija, hilo scrollable, input fijo.
+   El input queda siempre por encima de la reserva de la isla (padding-bottom
+   del viewport en AppShell, DESIGN.md §5). */
+
+.view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Título de la vista solo para lectores de pantalla (DESIGN.md §12) */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

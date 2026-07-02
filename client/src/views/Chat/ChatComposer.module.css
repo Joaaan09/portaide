@@ -1,0 +1,170 @@
+/* ChatComposer — input del chat (medidas del mockup canónico) */
+
+.composer {
+  flex: none;
+  padding: 8px 12px 10px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+/* ---------- Chips de contexto ---------- */
+
+.chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 7px;
+}
+
+/* Chip de archivo: mono (es una ruta, DESIGN.md §2) */
+.chip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 7px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--dim);
+}
+
+.chipAt {
+  color: var(--accent);
+}
+
+/* Chip "+ context": sans y --faint, como el mockup */
+.chipGhost {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 7px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  font-size: 10px;
+  color: var(--faint);
+}
+
+/* ---------- Caja de texto ---------- */
+
+.box {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 8px 8px 8px 12px;
+  border-radius: 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  transition: border-color 0.15s ease;
+}
+
+/* Foco: el borde pasa a acento (el cursor nunca es el único indicador, DESIGN.md §12) */
+.box:focus-within {
+  border-color: var(--accent);
+}
+
+.textarea {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 0;
+  border: 0;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13.5px;
+  line-height: 19px;
+  max-height: 88px; /* ~4 líneas; a partir de ahí scroll interno */
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.textarea::-webkit-scrollbar {
+  display: none;
+}
+
+.textarea::placeholder {
+  color: var(--faint);
+}
+
+/* Botón enviar: 34px visuales del mockup + hit-area de 44px (DESIGN.md §12) */
+.send {
+  position: relative;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 11px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-family: inherit;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.16s ease-out;
+}
+
+.send::after {
+  content: '';
+  position: absolute;
+  inset: -5px;
+}
+
+.send:disabled {
+  background: var(--surface2);
+  color: var(--faint);
+  cursor: default;
+}
+
+.send:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.send:focus-visible {
+  outline: 2px solid var(--accent2);
+  outline-offset: 2px;
+}
+
+/* ---------- Pie: modelo + permission label ---------- */
+
+.meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 6px;
+  padding: 0 4px;
+}
+
+.model {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--faint);
+}
+
+.permission {
+  font-size: 10px;
+  color: var(--faint);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .send {
+    /* Se conserva el cambio de color (informa del estado); se quita el movimiento */
+    transition:
+      background-color 0.15s ease,
+      color 0.15s ease;
+  }
+
+  .send:active:not(:disabled) {
+    transform: none;
+  }
+}
