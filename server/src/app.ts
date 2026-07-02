@@ -1,17 +1,31 @@
-// App Express: middlewares base y rutas HTTP de la API.
-// Las rutas de FS/editor y la auth llegan en fases posteriores (CLAUDE.md §11:
-// nada de FS/pty/chat sin sesión válida — pendiente de decidir el mecanismo).
+// App Express: middlewares base y montaje de rutas de la API.
+// El orden de montaje es el borde de seguridad (CLAUDE.md §11): todo lo que
+// cuelga tras el GATE requiere sesión válida.
 import express from 'express';
+import cookieParser from 'cookie-parser';
+import { healthRouter } from './routes/health.js';
+import { authRouter } from './auth/routes.js';
+import { requireAuth } from './auth/middleware.js';
 
 export function createApp(): express.Express {
   const app = express();
 
-  app.use(express.json());
+  // NPM (Nginx Proxy Manager) termina TLS por delante. Confiar en 1 proxy para
+  // que req.ip (rate-limit) y `secure` reflejen la conexión real del cliente.
+  app.set('trust proxy', 1);
 
-  // Salud del servicio (la usan el HEALTHCHECK de Docker y el compose)
-  app.get('/api/health', (_req, res) => {
-    res.json({ status: 'ok', service: 'portaide', uptime: process.uptime() });
-  });
+  app.use(express.json());
+  app.use(cookieParser());
+
+  // --- Orden de montaje (CRÍTICO) -----------------------------------------
+  app.use('/api/health', healthRouter); // PÚBLICO
+  app.use('/api/auth', authRouter); // login/logout públicos; /me protegido dentro
+
+  // GATE: todo lo que se monte DEBAJO de esta línea hereda requireAuth.
+  app.use('/api', requireAuth);
+
+  // Los routers de features (fs, terminal, chat) se montan AQUÍ DEBAJO para
+  // heredar el gate de autenticación (llegan en fases posteriores).
 
   return app;
 }

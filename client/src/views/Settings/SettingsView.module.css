@@ -1,0 +1,128 @@
+/* Vista Settings — cabecera + secciones "lista agrupada" (DESIGN.md §10/§15) */
+
+.view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Cabecera al estilo del mockup (19px/700, borde inferior 1px) */
+.header {
+  flex: none;
+  padding: 14px 18px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.title {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* El scroll vive aquí (patrón app-shell, DESIGN.md §5) */
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px;
+  scrollbar-width: none;
+}
+
+.body::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.section {
+  margin-bottom: 22px;
+}
+
+/* Eyebrow mono en --faint (DESIGN.md §2/§10) */
+.eyebrow {
+  margin: 0 0 8px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+/* Card de sección: superficie + borde 1px, filas separadas por 1px (DESIGN.md §10) */
+.card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
+  padding: 12px 14px;
+}
+
+.rowLabel {
+  font-size: 13.5px;
+  color: var(--dim);
+}
+
+/* Email = dato técnico → JetBrains Mono (DESIGN.md §2) */
+.rowValue {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12.5px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.rowAction {
+  padding: 12px 14px;
+  border-top: 1px solid var(--border);
+}
+
+/* Botón secundario "Log out": surface2 + borde, texto --red (cierra sesión) */
+.logout {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface2);
+  color: var(--red);
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    transform 0.16s ease-out;
+}
+
+.logout:active {
+  transform: scale(0.99);
+}
+
+.logout:focus-visible {
+  outline: 2px solid var(--accent2);
+  outline-offset: 2px;
+}
+
+.note {
+  margin: 0;
+  max-width: 44ch;
+  font-size: 13px;
+  line-height: 19px;
+  color: var(--dim);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .logout:active {
+    transform: none;
+  }
+}

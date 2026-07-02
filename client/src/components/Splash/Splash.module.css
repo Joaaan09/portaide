@@ -1,0 +1,46 @@
+/* Splash de arranque (DESIGN.md §15) */
+
+.screen {
+  position: relative;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+/* Glow radial de acento (mismo patrón que AppShell, DESIGN.md §4) */
+.glow {
+  position: absolute;
+  top: -90px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 360px;
+  height: 260px;
+  background: radial-gradient(50% 60% at 50% 50%, var(--glow) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.spinner {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  border: 2px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* prefers-reduced-motion: el spinner deja de girar (DESIGN.md §11) */
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
+}

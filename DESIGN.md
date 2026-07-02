@@ -246,3 +246,44 @@ Reglas: transiciones cortas (≤ ~220ms), `ease`/spring suaves, sin animar layou
 - [ ] Motion según §11 + `prefers-reduced-motion`.
 - [ ] Semántica + teclado + foco visible + contraste + táctil ~44px.
 - [ ] Coincide con el mockup `Editor Movil (offline).html` (la vista que toques).
+
+## 15. Vista Login (pre-autenticación)
+
+> No está en el mockup canónico (el mockup asume sesión ya iniciada). Se documenta
+> aquí antes de implementar (CLAUDE.md §5). Es la puerta del borde de seguridad
+> (§11 de CLAUDE.md): sin sesión válida, es lo único que se renderiza.
+
+- **Marco**: pantalla completa sobre `--bg` con el **glow radial de acento** (mismo patrón que
+  el AppShell, §4), columna única centrada vertical y horizontalmente, con `padding` y safe-areas.
+- **Card**: superficie `--surface`, borde 1px `--border`, radio 14px, ancho máx ~360px. Sin sombra
+  pesada (§0): separa por borde. Dentro, en columna: marca → formulario.
+- **Marca**: icono `/portaide-icon.svg` (~44px, radio) + wordmark **"PortaIDE"** (IBM Plex Sans 700,
+  `--text`) + tagline corta en `--dim`. Alternativa de motivo: el `❯` de marca en `--green`.
+- **Inputs** (email + contraseña): caja `--bg`, borde 1px `--border`, radio 10px, texto en
+  **JetBrains Mono** (encaja con la estética terminal y con "el código es el héroe", §1/§2),
+  min-height 44px (táctil, §12). **Label accesible** por input (mono, `--faint`, mayúsculas,
+  `letter-spacing`), nunca solo `placeholder`. Foco: borde a `--accent` (`:focus-within`) — el
+  indicador de foco no depende solo del cursor (§12).
+- **Botón primario "Sign in"**: fondo `--accent`, texto `--on-accent`, radio 10px, ancho completo,
+  min-height 44px, peso 600. Deshabilitado (sin datos o cargando) → `--surface2` / `--faint`.
+  `:active` scale sutil, `:focus-visible` outline `--accent2` (§12).
+- **Estado de error**: mensaje en `--red` (rol `alert`), texto sobrio, sin iconografía pesada.
+  Mismo mensaje para email o contraseña incorrectos (no se filtra cuál; el backend devuelve
+  `invalid_credentials`).
+- **Estado de carga**: el botón muestra un spinner (animación `spin`, §11) + label "Signing in…";
+  inputs y botón deshabilitados durante la petición.
+- **Splash de arranque** (mientras se resuelve `GET /api/auth/me`): pantalla sobria sobre `--bg`
+  con el glow + spinner de acento (anim `spin`). Sin contenido de app hasta conocer la sesión.
+- **Motion**: entrada con `fadein` (§11); respeta `prefers-reduced-motion` (sin rebotes; el spinner
+  se reduce a estado textual "Signing in…" / spinner sin giro). Todo con tokens, cero literales.
+
+### Ajustes → Account (sección real dentro de Settings)
+
+Primera sección funcional de Settings (el resto sigue como stub, §10). Sigue el patrón de
+"lista agrupada" de §10:
+
+- **Eyebrow** "ACCOUNT" en `--faint` mayúsculas + card `--surface` con filas separadas por 1px `--border`.
+- Fila **"Signed in as"** (label `--dim`) + email de la sesión en **JetBrains Mono** `--text`.
+- Botón **"Log out"**: botón **secundario** (fondo `--surface2`, borde 1px `--border`, texto `--red`
+  para señalar que cierra la sesión), radio 8px, min-height 44px, `:focus-visible` outline `--accent2`.
+  Llama a `useAuth().logout()`.
