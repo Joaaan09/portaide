@@ -2,47 +2,58 @@
 
 > Léeme al empezar. Actualízame al terminar cada sesión.
 
-**Última actualización:** 2026-07-02 (2ª sesión)
+**Última actualización:** 2026-07-02 (3ª sesión)
 
 ## Dónde estamos
 
-**Fase 0 cerrada y Fase 1 implementada** (pendiente solo de QA visual del usuario). Hay app real:
-monorepo `client/` + `server/` + capa Docker, con el shell móvil y la **vista Chat completa (mock)**
-funcionando. Rama de trabajo: **`staging`** (main solo tiene el commit inicial del harness).
+**Fase 3 IMPLEMENTADA Y DESPLEGADA.** PortaIDE ya es funcional de verdad (NO mock): conectada al VPS,
+con login, terminal real (con `claude`/`clauded`), filesystem, editor y **chat con Claude real
+(aprobaciones Approve/Reject reales)**. Desplegada con `docker compose up -d --build` y verificada de
+punta a punta (SPA + health + **login OK** por la cadena nginx→backend). Rama de trabajo: `staging`.
 
-Hecho en esta sesión (commits `354c2ee`, `945b630`, `7605bbf` en staging):
+Hecho en esta sesión (commits `ffbe7a4`…`76306ff` + deploy):
 
-- **Decisiones cerradas** (ver decisiones.md): stack **MERN confirmado por el usuario** (Mongo entra
-  en v1, supersede "sin DB"); despliegue **Docker + Nginx Proxy Manager, patrón SmartPeak**
-  (explorados smartpeak / total-grind±staging / connectu / fichame con un workflow de agentes);
-  libs concretas (CodeMirror 6, xterm.js, ws, node-pty, mongoose, CSS Modules **sin Tailwind**,
-  fuentes @fontsource); subagente `revisor` **omitido** cuando el orquestador corre con Fable 5.
-- **Scaffolding**: `client/` (Vite + React 19 + TS, PWA con manifest/iconos de brand/, proxy dev
-  /api y /ws → :4100), `server/` (Express + TS ESM en **:4100**, `/api/health`, WS eco en `/ws`,
-  Mongo opcional con reintentos), Docker completo (compose `portaide-*`, mongo:7 en loopback
-  **27018**, montajes del host anotados para Fase 3), scripts raíz con concurrently.
-- **Fase 1 UI**: tokens de los 3 temas + `--on-accent` (documentado en DESIGN.md §3 antes de usarlo);
-  ThemeProvider persistido; navegación por estado (sin react-router); AppShell (100dvh, glow, fadein);
-  **NavIsland** calcada del mockup (píldora ↔ 5 pestañas + scrim, islandOpen/islandScrim,
-  reduced-motion, a11y); 4 vistas stub + **vista Chat completa**: pestañas de chats, hilo con
-  burbujas/thinking colapsable/tool-cards Read-Edit-Bash (diff + Approve/Reject interactivos),
-  typing `dot`, composer fijo con textarea autoexpandible y pie modelo/permission.
-- **Verificación** (sin subagente revisor, la hizo el orquestador): builds y typecheck de client y
-  server en verde; barrido de colores literales limpio (solo los sancionados por DESIGN); lectura
-  crítica de NavIsland/AppShell/Chat; `docker compose config` OK; `/api/health` probado con curl.
-  **No se pudo hacer captura en navegador** (el VPS no tiene las libs de sistema de Chromium).
-- 2 flecos menores de a11y de la isla anotados en `.progreso/bugs.md`.
+- **Auth** (bloqueante §11): login email+contraseña de UN usuario por `.env` (bcryptjs + JWT en cookie
+  httpOnly, rate-limit). Gate en TODO `/api` y en el upgrade de los 3 WS. Verificado: 401 sin sesión en
+  todo el `/api`, cookie `HttpOnly`.
+- **Terminal real**: `node-pty` por `/ws/terminal`, xterm con pestañas, barra de teclas especiales,
+  tema por tokens. `claude`/`clauded`/git/bash presentes en la imagen (verificado dentro del contenedor).
+- **FS + Files + Editor**: `/api/fs` con guard anti path-traversal; Workspace estilo "Open Folder";
+  vista Files (árbol lazy + selector de carpeta); Editor CodeMirror 6 (guardar Ctrl/Cmd+S, barra de
+  símbolos, tema por tokens).
+- **Chat = Claude real**: `@anthropic-ai/claude-agent-sdk` + `canUseTool` → **Approve/Reject reales**
+  por `/ws/chat`; streaming (thinking/text/tool-cards), selector de modelo y permission mode; **mock
+  ELIMINADO**. Smoke verde: Write aprobado crea archivo, denegado no lo crea.
+- **Docker**: imagen backend `node:20-slim` (glibc, compat con claude-code y node-pty), toolchain para
+  node-pty, `claude` global + wrapper `clauded`, git/bash, `HOME=/home/kuoyii`, corre como uid 1000;
+  monta `/home/kuoyii/servers` y `~/.claude`. Compose pasa SESSION_SECRET/AUTH_*/FS_ROOT.
+- **Deploy**: reseteado el volumen vacío de Mongo (el `up` de scaffolding lo creó sin auth); ahora
+  Mongo autentica y el backend conecta (`[mongo] conectado`).
 
-## Referencias útiles
+## Cómo entrar
 
-- Mockups desempaquetados (HTML real) en el scratchpad de la sesión 2026-07-02; si hacen falta de
-  nuevo, extraer el JSON del `<script type="__bundler/template">` de los `*.html` (offline) del repo.
-- El puerto **4100** (backend) y el **27018** (mongo loopback) se eligieron para no chocar con
-  smartpeak (4000/27017), totalgrind (5000), fichame (3000) y connectu (3900).
+- **URL**: la que configuraste en Nginx Proxy Manager → `portaide-frontend`. **Login**:
+  `jcollvir@gmail.com` / `joan5599`.
+- Secretos en `/home/kuoyii/servers/portaide/.env` (gitignored, chmod 600): MONGO_*, SESSION_SECRET,
+  AUTH_EMAIL, AUTH_PASSWORD. Puertos: backend 4100 (interno), mongo loopback 27018.
 
-## Siguiente paso (propuesto)
+## PENDIENTE — acción del usuario (no lo puedo hacer yo)
 
-1. **QA visual del usuario** en móvil/navegador (`npm run dev`) e **iterar shell + Chat** hasta clavar
-   el tono (última casilla de Fase 1). 2. Luego Fase 2 (Files → Editor → Terminal → Settings) contra el
-   sistema bloqueado. 3. En paralelo cuando toque: Fase 3 (FS API, pty WS, puente `claude`, auth) —
-   la auth de un solo usuario sigue **pendiente de decidir** y es bloqueante para exponer.
+1. **Activar "Websockets Support"** en el proxy host de NPM para el dominio de PortaIDE. **Sin esto la
+   terminal y el chat NO conectan** (el WS no pasa el borde). El resto (login, files, editor) sí.
+2. **Cambiar la contraseña** `joan5599` (débil y viajó en claro por el chat): editar `AUTH_PASSWORD`
+   en `.env` y `docker compose up -d --build`.
+3. **QA visual** en el móvil: las 5 vistas y los 3 temas contra el mockup.
+
+## Flecos conocidos (ver bugs.md) — no bloqueantes
+
+- Files no muestra estado git por archivo (falta endpoint git-status).
+- Al recargar, las pestañas de chat persisten pero no reanudan el hilo (no se guarda `claudeSessionId`).
+- Editor: split-terminal aplazado a v2; undo se reinicia al cambiar de pestaña.
+- FS: `resolveSafe` no resuelve symlinks (aceptable v1, un solo usuario).
+- `DELETE /api/chat/sessions/:id` existe pero sin botón en la UI.
+
+## Siguiente
+
+Iterar según tu QA. Mejoras candidatas: reanudar chat tras reload, git-status en el explorer,
+split-terminal, endurecer symlinks, 2FA/passkeys si se quiere subir el listón de seguridad.

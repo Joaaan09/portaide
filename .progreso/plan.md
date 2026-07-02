@@ -31,11 +31,19 @@
 - [ ] Vista Terminal (pestañas, salida coloreada, teclas especiales)
 - [ ] Vista Settings (VPS connection, Claude Code, appearance)
 
-## Fase 3 — Backend / integración real
+## Fase 3 — Backend / integración real  ✅ DESPLEGADA (2026-07-02)
 
-- [ ] API de filesystem (árbol / leer / escribir) sobre el proyecto abierto
-- [ ] Terminal real: `node-pty` sobre WebSocket
-- [ ] **Puente con `claude`**: lanzar el CLI en streaming, parsear eventos → UI del chat (modelo,
-      slash-commands, permission mode)
-- [ ] **Seguridad (bloqueante para exponer)**: auth de un solo usuario + HTTPS/TLS en todo endpoint
-- [ ] PWA: manifest + service worker + `head-snippet` (instalable, offline shell)
+- [x] API de filesystem (árbol / leer / escribir) sobre el proyecto abierto (`/api/fs`, anti-traversal)
+- [x] Vista Files (árbol lazy + selector de carpeta "Open Folder") y **Editor real (CodeMirror 6)**
+- [x] Terminal real: `node-pty` sobre WebSocket (`/ws/terminal`, xterm, `claude`/`clauded` en la imagen)
+- [x] **Puente con `claude`**: vía **Agent SDK** (no CLI-streaming) — `canUseTool` con Approve/Reject
+      reales, modelo y permission mode en caliente por `/ws/chat`. Mock eliminado.
+- [x] **Seguridad (bloqueante para exponer)**: auth de un solo usuario (email+pass → JWT httpOnly),
+      gate en todo `/api` y en el upgrade de los WS. TLS lo termina NPM.
+- [~] PWA: manifest + `head-snippet` ✅; **service worker offline** pendiente (aplazado).
+
+## Despliegue (Docker + NPM) — hecho
+
+- [x] Imagen backend `node:20-slim` con node-pty compilado, `claude` global + `clauded`, git/bash, mounts.
+- [x] `docker compose up -d --build` desplegado y verificado (SPA + health + login por nginx→backend).
+- [x] Volumen de Mongo reseteado para que inicialice con auth (el `up` de scaffolding lo creó sin auth).

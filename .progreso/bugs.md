@@ -22,3 +22,16 @@
   `server/src/fs/routes.ts`, `client/src/views/Files/FileTree.tsx`.
 - [ ] **2026-07-02 · nota** — La fila de conexión de Files es estática (`● connected`), no refleja un
   polling real de salud. Decidir si se quiere indicador dinámico. `client/src/views/Files/FilesView.tsx`.
+- [ ] **2026-07-02 · menor · feature** — Al **recargar**, las pestañas de chat persisten (Mongo) pero
+  el hilo aparece vacío y **no reanuda** la sesión de Claude: no se guarda/actualiza el `claudeSessionId`
+  de cada pestaña (no hay endpoint de update). La conversación viva (sin recargar) sí funciona.
+  `server/src/chat/store.ts`, `server/src/chat/routes.ts`, `client/src/views/Chat/chatStore.ts`.
+- [ ] **2026-07-02 · menor · UX** — Editor: el **undo** se reinicia al cambiar de pestaña (se remonta
+  CodeMirror con `key={path}`); el contenido no guardado SÍ se conserva. `client/src/views/Editor/CodeArea.tsx`.
+- [ ] **2026-07-02 · menor · feature** — `DELETE /api/chat/sessions/:id` existe pero **no está cableado**
+  en la UI (no hay botón de cerrar pestaña de chat). `client/src/views/Chat/`.
+- [ ] **2026-07-02 · nota · seguridad** — El chat hereda `settingSources` por defecto: si el usuario
+  define `permissions.allow` global en `~/.claude`, esas reglas pre-aprobarían tools también en PortaIDE.
+  Aceptable (un solo usuario); aislar con `settingSources: []` si se quiere. `server/src/chat/bridge.ts`.
+- [ ] **2026-07-02 · pendiente** — **Service worker / offline PWA** no implementado (manifest y
+  head-snippet sí). Aplazado. `client/`.

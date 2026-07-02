@@ -180,6 +180,24 @@
 
 ---
 
+### 2026-07-02 · Despliegue e implementación de Fase 3 (notas de cierre)
+
+- **Imagen backend `node:20-slim` (Debian/glibc), NO alpine/musl:** el binario `claude` y `node-pty`
+  son más compatibles con glibc (igual que el host). Instala `claude` global (para la Terminal) + un
+  wrapper real `/usr/local/bin/clauded` (más robusto que un alias de shell en contenedor). `HOME=/home/kuoyii`
+  y `USER node` (uid 1000 = kuoyii) para que `~/.claude` montado y las rutas absolutas coincidan.
+- **Auth del engine confirmada:** el CLI headless y el Agent SDK autentican con la **suscripción**
+  (`~/.claude/.credentials.json`), sin `ANTHROPIC_API_KEY`. Verificado en local y dentro del contenedor.
+- **Fix del puente (importante):** `canUseTool` del SDK **exige `updatedInput` (record)** en la respuesta
+  `behavior:'allow'`; sin él lanza ZodError y la tool falla en silencio. El puente hace `updatedInput ?? input`.
+- **Bash de solo-lectura NO pide permiso** (el engine 2.x lo ejecuta en sandbox sin `canUseTool`); el
+  gating real aplica a Write/Edit y a Bash con efectos. No es bug.
+- **Mongo:** el `docker compose up` de scaffolding (sin `.env`) inicializó el volumen **sin auth**. Al
+  desplegar Fase 3 se **reseteó el volumen vacío** para que Mongo arrancara con `MONGO_INITDB_*` y el
+  backend autenticara. Mongo sigue siendo **opcional** (el backend degrada a memoria si cae).
+
+---
+
 ## Pendientes de decidir (no inventar; preguntar o resolver en implementación)
 
 - **Ampliar `FS_ROOT`** a todo el servidor (montar `/home/kuoyii` o `/`, o backend en el host) si el
