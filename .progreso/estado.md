@@ -59,9 +59,10 @@ Vista Settings completada y **desplegada** (implementada por trabajo paralelo de
 Appearance (tema con swatches + tamaño de fuente cableado a CodeMirror) + System (`/api/system` real).
 En esta sesión afiné **3 fixes sobre lo desplegado** (swatch de tema con fondo por tema §10, foco del
 stepper en los límites, default de fuente con localStorage vacío) y puse **DESIGN §10 + decisiones.md** al
-día (System sustituye a VPS Connection; Claude Code sigue en el composer del Chat). Typecheck verde.
-**PENDIENTE del usuario: desplegar estos fixes** (`docker compose up -d --build`) cuando quiera.
-⚠️ Hubo **dos sesiones sobre el mismo checkout pisándose** — coordinar antes de paralelizar de nuevo.
+día (System sustituye a VPS Connection; Claude Code sigue en el composer del Chat). Typecheck verde y **DESPLEGADO** (frontend rebuild, 2026-07-02; commit `465922b`). Árbol limpio,
+repo↔desplegado reconciliados. Verificado: pila healthy, SPA sirviendo.
+⚠️ Hubo **dos sesiones sobre el mismo checkout pisándose** — NO correr dos sesiones de Claude sobre el
+mismo repo a la vez (causó el "corte" y ejecutores pisándose en disco). Coordinar antes de paralelizar.
 
 ## Siguiente
 
