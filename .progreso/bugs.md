@@ -13,3 +13,12 @@
 - [ ] **2026-07-02 · menor · a11y** — La isla abierta no tiene focus-trap: con Tab se puede salir
   del menú sin cerrarlo (Escape y el scrim sí cierran). Valorar trap ligero o cierre en `blur`.
   `client/src/components/NavIsland/NavIsland.tsx`.
+- [ ] **2026-07-02 · menor · seguridad** — `resolveSafe` (FS API) valida por ruta (`path.resolve` +
+  `startsWith(FS_ROOT)`) pero **no resuelve symlinks**: un symlink DENTRO de `FS_ROOT` que apunte
+  fuera podría escapar del root. Aceptable en v1 (un solo usuario sobre su propio FS, tras auth),
+  pero endurecer con `fs.realpath` + recheck si algún día hay más superficie. `server/src/fs/paths.ts`.
+- [ ] **2026-07-02 · menor · feature** — Falta el **estado git por archivo** en el explorer (DESIGN §8
+  pide marca M/A/… a la derecha): la FS API v1 no expone git-status. Pendiente endpoint + columna.
+  `server/src/fs/routes.ts`, `client/src/views/Files/FileTree.tsx`.
+- [ ] **2026-07-02 · nota** — La fila de conexión de Files es estática (`● connected`), no refleja un
+  polling real de salud. Decidir si se quiere indicador dinámico. `client/src/views/Files/FilesView.tsx`.

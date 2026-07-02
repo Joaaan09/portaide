@@ -1,7 +1,9 @@
 // Punto de entrada: servidor HTTP + WebSocket.
-// El WS en /ws es un esqueleto (eco), ya AUTENTICADO: el upgrade valida la
-// cookie de sesión antes de abrir el socket (CLAUDE.md §11). El pty real y el
-// puente al CLI `claude` llegan en Fase 3.
+// El WS enruta por path tras un gate de autenticación común (CLAUDE.md §11: el
+// upgrade valida la cookie de sesión ANTES de abrir el socket):
+//   /ws           → eco (esqueleto para validar la tubería móvil ⇄ backend)
+//   /ws/terminal  → pty real (shell del VPS por WebSocket)
+// El puente al CLI `claude` (/ws/chat) llega en Fase 3.
 import http from 'node:http';
 import { URL } from 'node:url';
 import { WebSocketServer } from 'ws';
@@ -9,26 +11,31 @@ import { createApp } from './app.js';
 import { env } from './config/env.js';
 import { connectMongo } from './db/mongo.js';
 import { authenticateUpgrade } from './auth/ws.js';
+import { handleTerminalConnection } from './terminal/pty.js';
 
 const app = createApp();
 const server = http.createServer(app);
 
-// --- WebSocket (esqueleto, autenticado) ---------------------------------
+// --- WebSocket (autenticado, enrutado por path) -------------------------
 // noServer: gestionamos el upgrade a mano para (1) validar la cookie ANTES de
-// abrir el socket y (2) poder enrutar por path en el futuro (/ws/terminal,
-// /ws/chat). De momento solo existe el eco en /ws.
+// abrir el socket y (2) enrutar por path. Un único WebSocketServer sirve el
+// handshake de ambas rutas; el eco solo se dispara si emitimos 'connection'
+// (el pty no lo hace: llama directo a su handler).
 const wss = new WebSocketServer({ noServer: true });
 
 server.on('upgrade', (req, socket, head) => {
   const { pathname } = new URL(req.url ?? '', 'http://localhost');
 
-  if (pathname !== '/ws') {
+  // Rutas WS conocidas: /ws (eco) y /ws/terminal (pty). El resto: 404.
+  if (pathname !== '/ws' && pathname !== '/ws/terminal') {
     socket.write('HTTP/1.1 404 Not Found\r\n\r\n');
     socket.destroy();
     return;
   }
 
-  // GATE de seguridad: sin sesión válida se rechaza el upgrade (no se abre WS).
+  // GATE de seguridad, común a TODAS las rutas WS (CLAUDE.md §11): sin sesión
+  // válida se rechaza el upgrade (no se abre el socket). Vale también para
+  // /ws/terminal, que entrega una shell completa del VPS.
   const session = authenticateUpgrade(req);
   if (!session) {
     socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
@@ -37,7 +44,12 @@ server.on('upgrade', (req, socket, head) => {
   }
 
   wss.handleUpgrade(req, socket, head, (ws) => {
-    wss.emit('connection', ws, req, session);
+    if (pathname === '/ws/terminal') {
+      // pty real: no pasa por el eco (no emitimos 'connection').
+      handleTerminalConnection(ws, req, session);
+    } else {
+      wss.emit('connection', ws, req, session);
+    }
   });
 });
 

@@ -53,4 +53,57 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 export const api = {
   get: <T>(path: string): Promise<T> => request<T>('GET', path),
   post: <T>(path: string, body?: unknown): Promise<T> => request<T>('POST', path, body),
+  put: <T>(path: string, body?: unknown): Promise<T> => request<T>('PUT', path, body),
+  del: <T>(path: string): Promise<T> => request<T>('DELETE', path),
 }
+
+// --- FS API (server/src/fs) ------------------------------------------------
+// Helpers tipados sobre /api/fs. El `path` siempre es absoluto (dentro de
+// FS_ROOT); el backend valida con resolveSafe (guard anti path-traversal).
+
+/** Raíz navegable + workspace por defecto (GET /api/fs/context). */
+export interface FsContext {
+  root: string
+  defaultWorkspace: string
+}
+
+/** Entrada de una carpeta. `size` solo viene en archivos. */
+export interface FsEntry {
+  name: string
+  type: 'dir' | 'file'
+  size?: number
+}
+
+export interface FsListResult {
+  path: string
+  entries: FsEntry[]
+}
+
+export interface FsReadResult {
+  path: string
+  content: string
+  truncated?: boolean
+}
+
+/** Codifica una ruta para meterla en el query string. */
+const q = (path: string): string => encodeURIComponent(path)
+
+export const fsContext = (): Promise<FsContext> => api.get<FsContext>('/fs/context')
+
+export const listDir = (path: string): Promise<FsListResult> =>
+  api.get<FsListResult>(`/fs/list?path=${q(path)}`)
+
+export const readFile = (path: string): Promise<FsReadResult> =>
+  api.get<FsReadResult>(`/fs/read?path=${q(path)}`)
+
+export const writeFile = (path: string, content: string): Promise<{ ok: boolean; bytes: number }> =>
+  api.put<{ ok: boolean; bytes: number }>('/fs/write', { path, content })
+
+export const mkdir = (path: string): Promise<{ ok: boolean }> =>
+  api.post<{ ok: boolean }>('/fs/mkdir', { path })
+
+export const renamePath = (from: string, to: string): Promise<{ ok: boolean }> =>
+  api.post<{ ok: boolean }>('/fs/rename', { from, to })
+
+export const deletePath = (path: string): Promise<{ ok: boolean }> =>
+  api.del<{ ok: boolean }>(`/fs/delete?path=${q(path)}`)

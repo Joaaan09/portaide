@@ -1,0 +1,298 @@
+/* Vista Terminal (DESIGN.md §9): pestañas + área xterm + barra de teclas.
+   Columna única, densa, separada por bordes de 1px. Solo tokens `--*`. */
+
+.view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Título de la vista solo para lectores de pantalla (DESIGN.md §12) */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---------- Pestañas (cabecera) ---------- */
+
+.bar {
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.tabs {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  overflow-x: auto;
+  scrollbar-width: none;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+
+/* Item = botón de selección + botón de cierre; el estado activo vive aquí para
+   que fondo y subrayado los compartan ambos botones. */
+.tabItem {
+  display: flex;
+  align-items: stretch;
+  flex: none;
+  border-right: 1px solid var(--border);
+  border-bottom: 2px solid transparent;
+}
+
+.tabItemActive {
+  border-bottom-color: var(--accent);
+  background: var(--surface2);
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 44px;
+  padding: 11px 8px 11px 13px;
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+/* Punto de estado de la pestaña (DESIGN.md §9) */
+.dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--faint);
+}
+
+.dotOk {
+  background: var(--green);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--green) 60%, transparent);
+}
+
+.dotDown {
+  background: var(--red);
+}
+
+.dotIdle {
+  background: var(--faint);
+}
+
+.tabName {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--faint);
+  white-space: nowrap;
+}
+
+.tabItemActive .tabName {
+  color: var(--text);
+}
+
+/* Botón de cierre de pestaña (mata su pty). Solo cuando hay más de una. */
+.tabClose {
+  flex: none;
+  width: 30px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px 0 2px;
+  border: 0;
+  background: transparent;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--faint);
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.tabClose:hover {
+  color: var(--text);
+}
+
+/* Botón de nueva terminal */
+.add {
+  flex: none;
+  width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-left: 1px solid var(--border);
+  background: transparent;
+  font-family: inherit;
+  font-size: 19px;
+  line-height: 1;
+  color: var(--dim);
+  cursor: pointer;
+  transition: transform 0.16s ease-out;
+}
+
+.add:active {
+  transform: scale(0.92);
+}
+
+.tab:focus-visible,
+.tabClose:focus-visible,
+.add:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* ---------- Área de terminales ---------- */
+
+.panes {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.pane {
+  position: absolute;
+  inset: 0;
+}
+
+.paneHidden {
+  display: none;
+}
+
+.paneInner {
+  position: absolute;
+  inset: 0;
+}
+
+/* Contenedor de xterm. El padding es cómodo; FitAddon lo descuenta al medir. */
+.host {
+  width: 100%;
+  height: 100%;
+  padding: 6px 8px 0;
+}
+
+/* Overlay sobrio de estado (cierre/error) con acción de reconexión */
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 20px;
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  text-align: center;
+}
+
+.overlayText {
+  margin: 0;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12.5px;
+  color: var(--dim);
+}
+
+.reconnect {
+  min-height: 40px;
+  padding: 9px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface2);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.16s ease-out;
+}
+
+.reconnect:active {
+  transform: scale(0.98);
+}
+
+.reconnect:focus-visible {
+  outline: 2px solid var(--accent2);
+  outline-offset: 2px;
+}
+
+/* ---------- Barra de teclas especiales (DESIGN.md §9) ---------- */
+
+.keybar {
+  flex: none;
+  display: flex;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.keybar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Celdas mono ~46px, separadas por --border, ≥44px táctiles */
+.key {
+  flex: none;
+  min-width: 46px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  border: 0;
+  border-right: 1px solid var(--border);
+  background: transparent;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  color: var(--dim);
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+}
+
+.key:active {
+  background: var(--surface2);
+}
+
+/* Modificador armado (ctrl/alt sticky): acento + subrayado */
+.keyArmed {
+  background: var(--surface2);
+  color: var(--accent);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.key:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .add,
+  .reconnect,
+  .key {
+    transition: none;
+  }
+
+  .add:active,
+  .reconnect:active {
+    transform: none;
+  }
+}

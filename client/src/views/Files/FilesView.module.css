@@ -1,0 +1,505 @@
+/* Vista Files (DESIGN.md §8) — cabecera con workspace + explorer en árbol lazy.
+   Solo tokens --*; los literales de los badges de extensión son la excepción
+   documentada en DESIGN.md §3. */
+
+.view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- Cabecera ---------- */
+
+.header {
+  flex: none;
+  padding: 14px 18px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.project {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Badge del proyecto: cuadradito de acento con la inicial (DESIGN.md §8) */
+.badge {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.projectMeta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.projectName {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Ruta del workspace = dato técnico → JetBrains Mono (DESIGN.md §2) */
+.projectPath {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl; /* al truncar, conserva el final de la ruta (el más útil) */
+  text-align: left;
+}
+
+/* Botón secundario "change folder" (abre el selector) */
+.changeBtn {
+  flex: none;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface2);
+  color: var(--dim);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.16s ease-out;
+}
+
+.changeBtn:active {
+  transform: scale(0.97);
+}
+
+.changeBtn:focus-visible {
+  outline: 2px solid var(--accent2);
+  outline-offset: 2px;
+}
+
+/* Fila de estado de conexión (DESIGN.md §8) */
+.connRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.connDot {
+  font-size: 9px;
+  line-height: 1;
+  color: var(--green);
+}
+
+.connDotError {
+  color: var(--red);
+}
+
+.connText {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--dim);
+}
+
+/* ---------- Cuerpo / explorer ---------- */
+
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 10px 18px;
+  scrollbar-width: none;
+}
+
+.body::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.eyebrow {
+  margin: 0 0 6px;
+  padding: 0 8px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+/* ---------- Árbol ---------- */
+
+.tree,
+.group {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.li {
+  position: relative;
+}
+
+/* Fila (carpeta o archivo). border-left transparente reservado para el estado
+   activo → sin saltos de layout al activar. */
+.row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 5px 10px;
+  border: 0;
+  border-left: 2px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.row:hover {
+  background: color-mix(in srgb, var(--surface2) 55%, transparent);
+}
+
+.row:focus-visible {
+  outline: 2px solid var(--accent2);
+  outline-offset: -2px;
+}
+
+/* Fila activa: superficie 2 + borde-izquierdo de acento (DESIGN.md §8) */
+.rowActive {
+  background: var(--surface2);
+  border-left-color: var(--accent);
+  border-radius: 0 6px 6px 0;
+}
+
+.rowActive:hover {
+  background: var(--surface2);
+}
+
+/* Chevron de carpeta (▾/▸) */
+.chevron {
+  flex: none;
+  width: 12px;
+  color: var(--faint);
+  font-size: 10px;
+  text-align: center;
+  transition: transform 0.15s ease;
+}
+
+/* Badge de icono de archivo (DESIGN.md §3). Colores por extensión = literales
+   documentados; el color concreto se aplica inline desde el TSX. */
+.fileBadge {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 5px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: lowercase;
+}
+
+/* Fallback para extensiones sin color documentado: neutro por tokens */
+.fileBadgeNeutral {
+  background: var(--surface2);
+  color: var(--dim);
+}
+
+.rowName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Nombre de carpeta un pelín más marcado que un archivo */
+.dirName {
+  color: var(--text);
+}
+
+/* Estados dentro del árbol (carga/vacío/error), en mono discreto */
+.hint {
+  padding: 6px 10px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.hintError {
+  color: var(--red);
+}
+
+/* Spinner reutilizable (anim spin, DESIGN.md §11) */
+.spinner {
+  width: 13px;
+  height: 13px;
+  border: 2px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+.centerState {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 10px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--faint);
+}
+
+/* ---------- Selector de carpeta (overlay) ---------- */
+
+.pickerOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.pickerScrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(2px);
+  border: 0;
+  cursor: pointer;
+  animation: files-scrim 0.18s ease;
+}
+
+.pickerSheet {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  max-height: 80dvh;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  animation: files-sheet 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+.pickerHeader {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.pickerTitle {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.pickerClose {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface2);
+  color: var(--dim);
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.pickerClose:focus-visible {
+  outline: 2px solid var(--accent2);
+  outline-offset: 2px;
+}
+
+.pickerPath {
+  flex: none;
+  padding: 8px 16px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.pickerList {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 8px;
+  list-style: none;
+  margin: 0;
+  scrollbar-width: none;
+}
+
+.pickerList::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.pickerRow {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13.5px;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pickerRow:hover {
+  background: color-mix(in srgb, var(--surface2) 55%, transparent);
+}
+
+.pickerRow:focus-visible {
+  outline: 2px solid var(--accent2);
+  outline-offset: -2px;
+}
+
+.pickerRowGlyph {
+  flex: none;
+  width: 16px;
+  text-align: center;
+  color: var(--accent);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+}
+
+.pickerRowName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pickerFooter {
+  flex: none;
+  display: flex;
+  gap: 10px;
+  padding: 12px 16px 16px;
+  border-top: 1px solid var(--border);
+}
+
+/* Botón primario "Open this folder" */
+.pickerOpen {
+  flex: 1;
+  min-height: 44px;
+  padding: 11px 16px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    transform 0.16s ease-out;
+}
+
+.pickerOpen:active {
+  transform: scale(0.99);
+}
+
+.pickerOpen:focus-visible {
+  outline: 2px solid var(--accent2);
+  outline-offset: 2px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes files-scrim {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes files-sheet {
+  from {
+    transform: translateY(12px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+/* prefers-reduced-motion: sin giros ni rebotes; se conservan fades mínimos */
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
+  .chevron {
+    transition: none;
+  }
+  .pickerSheet {
+    animation: files-scrim 0.18s ease;
+  }
+  .row,
+  .changeBtn:active,
+  .pickerOpen:active {
+    transform: none;
+  }
+}

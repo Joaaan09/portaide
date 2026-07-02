@@ -4,6 +4,8 @@
 import { ThemeProvider } from './theme/ThemeProvider'
 import { AuthProvider, useAuth } from './auth/AuthProvider'
 import { NavigationProvider } from './navigation/NavigationProvider'
+import { WorkspaceProvider } from './workspace/WorkspaceProvider'
+import { OpenFilesProvider } from './openfiles/OpenFilesProvider'
 import AppShell from './components/AppShell/AppShell'
 import NavIsland from './components/NavIsland/NavIsland'
 import Splash from './components/Splash/Splash'
@@ -17,10 +19,16 @@ function AuthGate() {
   if (status === 'anon') return <LoginView />
 
   // Autenticado: la app completa (isla de nav como hermana del shell, fixed).
+  // WorkspaceProvider + OpenFilesProvider van DENTRO de NavigationProvider para
+  // que openFile() pueda navegar a la vista Editor.
   return (
     <NavigationProvider>
-      <AppShell />
-      <NavIsland />
+      <WorkspaceProvider>
+        <OpenFilesProvider>
+          <AppShell />
+          <NavIsland />
+        </OpenFilesProvider>
+      </WorkspaceProvider>
     </NavigationProvider>
   )
 }
