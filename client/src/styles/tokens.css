@@ -1,0 +1,100 @@
+/* ============================================================
+   PortaIDE — Tokens de tema + reset base
+   Fuente de verdad: DESIGN.md §3 (valores exactos del mockup).
+   Regla dura: los componentes consumen SOLO estos tokens `--*`;
+   cero colores literales fuera de este archivo.
+   ============================================================ */
+
+/* ---------- Midnight (por defecto) ---------- */
+:root,
+:root[data-theme='midnight'] {
+  --bg: #0a0a0f;
+  --surface: #111119;
+  --surface2: #191926;
+  --border: #242433;
+  --text: #e8e8f2;
+  --dim: #9494ac;
+  --faint: #565670;
+  --accent: #a970ff;
+  --accent2: #8b5cf6;
+  --glow: rgba(169, 112, 255, 0.28);
+  --green: #63e6a3;
+  --red: #ff7a90;
+  --yellow: #f0d070;
+  --blue: #74b6ff;
+  --orange: #ff9e64;
+}
+
+/* ---------- Lavender ---------- */
+:root[data-theme='lavender'] {
+  --bg: #14141a;
+  --surface: #1d1d26;
+  --surface2: #262632;
+  --border: #333342;
+  --text: #ececf3;
+  --dim: #a2a2b6;
+  --faint: #6a6a80;
+  --accent: #b6a0ff;
+  --accent2: #9683f0;
+  --glow: rgba(182, 160, 255, 0.2);
+  --green: #7fe0ac;
+  --red: #ff8698;
+  --yellow: #efd587;
+  --blue: #8ec0ff;
+  --orange: #ffab77;
+}
+
+/* ---------- Magenta ---------- */
+:root[data-theme='magenta'] {
+  --bg: #09060f;
+  --surface: #150d21;
+  --surface2: #1f1531;
+  --border: #2d2042;
+  --text: #f3ecff;
+  --dim: #b2a2cc;
+  --faint: #6c5c86;
+  --accent: #c264ff;
+  --accent2: #9b3ff0;
+  --glow: rgba(194, 100, 255, 0.32);
+  --green: #66e6b0;
+  --red: #ff6f97;
+  --yellow: #f2cf7a;
+  --blue: #7fa8ff;
+  --orange: #ff8f6b;
+}
+
+/* ============================================================
+   Reset mínimo + estilos base
+   ============================================================ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: dark;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Todo lo monoespaciado (código, terminal, rutas, labels técnicos) va en JetBrains Mono */
+code,
+pre,
+kbd,
+samp {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+#root {
+  min-height: 100dvh;
+}

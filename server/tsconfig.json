@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    /* Salida */
+    "outDir": "dist",
+    "rootDir": "src",
+
+    /* Node 20 + ESM nativo */
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+
+    /* Rigor */
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "forceConsistentCasingInFileNames": true,
+
+    /* Interop y DX */
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "sourceMap": true,
+    "declaration": false
+  },
+  "include": ["src"]
+}

@@ -4,7 +4,13 @@
   "private": true,
   "description": "PortaIDE — IDE portátil, web y mobile-first para programar desde el móvil con Claude Code, sobre tu VPS.",
   "scripts": {
-    "init": "bash scripts/init.sh"
+    "init": "bash scripts/init.sh",
+    "dev": "concurrently -n server,client -c blue,magenta \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:server": "npm --prefix server run dev",
+    "dev:client": "npm --prefix client run dev",
+    "build": "npm --prefix server run build && npm --prefix client run build",
+    "typecheck": "npm --prefix server run typecheck && npm --prefix client run typecheck",
+    "install:all": "npm install && npm --prefix server install && npm --prefix client install"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"

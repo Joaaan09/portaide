@@ -39,6 +39,12 @@ Lema de marca: *"Portable IDE — code on your VPS from anywhere, with Claude Co
 - **Filesystem**: API para árbol, leer y escribir archivos del proyecto abierto (vista *Files* / *Editor*).
 - **Terminal**: `pty` real por WebSocket (vista *Terminal*). Teclas especiales para móvil.
 - **Chat IA**: se apoya en el **CLI `claude`** (ver §4), no reimplementa el agente.
+- **Despliegue**: **Docker Compose detrás de Nginx Proxy Manager** (el patrón común de este VPS):
+  red externa `reverse_proxy_network` compartida con NPM (que termina TLS), frontend nginx con
+  `expose 80` (sin `ports:` al host), backend y `mongo:7` en red interna, healthchecks encadenados,
+  secretos vía `.env` (gitignored) + `.env.example`. El modelo a imitar es **SmartPeak**
+  (`../smartpeak`); el detalle completo y las peculiaridades de PortaIDE (montajes del host, WS)
+  están en [.progreso/decisiones.md](.progreso/decisiones.md) (entrada "Despliegue").
 
 ## 3. Las 5 vistas (norte de producto)
 
@@ -134,7 +140,9 @@ Eres el ORQUESTADOR. Tu trabajo es coordinar, no ejecutar el trabajo pesado.
 2. Si necesitas entender el código, delega en `explorador` (no leas decenas de archivos tú mismo).
 3. Para implementar, delega en `ejecutor` con una subtarea clara y acotada.
 4. Cuando termine, delega en `revisor` para verificar (tests, calidad, bugs). NO des una tarea por
-   buena sin pasar por el revisor.
+   buena sin pasar por el revisor. **Excepción (2026-07-02):** si el orquestador corre con **Fable 5**
+   (o superior), el subagente `revisor` se **omite**: esa verificación (build, tests, lectura crítica
+   del diff) la haces tú mismo antes de dar nada por bueno.
    - Bugs que NO se arreglan en el momento → `.progreso/bugs.md` (créalo si no existe).
    - Si se rompió o replanteó una regla del proyecto → `.progreso/decisiones.md`.
 5. Al cerrar: SOBRESCRIBE `.progreso/estado.md` con la foto actual y AÑADE una línea fechada a `.progreso/log.md`.
@@ -159,10 +167,13 @@ Desplegar subagentes **no siempre es necesario**. Si la tarea es sencilla, puede
   `main` es solo para cambios ya validados; nunca se desarrolla sobre `main`.
 - **Componentes**: funcionales, pequeños y modulares. Si un patrón de UI se repite, extráelo. Cero
   hardcode de colores: siempre tokens del sistema.
-- **Stack (propuesto, a validar en decisiones.md)**: monorepo `client/` (Vite + React + TS + Tailwind,
-  PWA; editor **CodeMirror 6**, terminal **xterm.js**) + `server/` (Node + Express + TS, **WebSocket**
-  para terminal/chat, `node-pty`, puente al CLI `claude`). **Sin base de datos en v1** (estado = el
-  filesystem + un store ligero para sesiones/ajustes). No inventes libs sin anotarlo como decisión.
+- **Stack (confirmado 2026-07-02, detalle en decisiones.md)**: **MERN**. Monorepo sin workspaces:
+  `client/` (Vite + React + TS, **CSS vanilla con tokens + CSS Modules** — sin Tailwind; PWA con
+  fuentes autoalojadas @fontsource; editor **CodeMirror 6**, terminal **xterm.js**) + `server/`
+  (Node 20 + Express + TS, **ws** para terminal/chat, `node-pty`, **mongoose**, puente al CLI
+  `claude`). **MongoDB** (`mongo:7` en Docker, red interna, con auth) para sesiones de chat y
+  ajustes; el estado real de los proyectos sigue siendo el filesystem del VPS. No inventes libs
+  sin anotarlo como decisión.
 - No inventes decisiones pendientes (libs concretas, detalles del puente `claude`, multi-VPS): **pregunta o anótalo**.
 
 ## 10. Comandos
