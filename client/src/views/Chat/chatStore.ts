@@ -35,7 +35,7 @@ export const EFFORT_STEPS: { value: ChatEffortSetting; label: string }[] = [
   { value: 'low', label: 'Low' },
   { value: 'medium', label: 'Medium' },
   { value: 'high', label: 'High' },
-  { value: 'xhigh', label: 'xHigh' },
+  { value: 'xhigh', label: 'Extra High' },
   { value: 'max', label: 'Max' },
 ]
 
