@@ -3,7 +3,7 @@
 // upgrade valida la cookie de sesión ANTES de abrir el socket):
 //   /ws           → eco (esqueleto para validar la tubería móvil ⇄ backend)
 //   /ws/terminal  → pty real (shell del VPS por WebSocket)
-// El puente al CLI `claude` (/ws/chat) llega en Fase 3.
+//   /ws/chat      → puente del chat con Claude REAL (Agent SDK)
 import http from 'node:http';
 import { URL } from 'node:url';
 import { WebSocketServer } from 'ws';
@@ -12,6 +12,7 @@ import { env } from './config/env.js';
 import { connectMongo } from './db/mongo.js';
 import { authenticateUpgrade } from './auth/ws.js';
 import { handleTerminalConnection } from './terminal/pty.js';
+import { handleChatConnection } from './chat/ws.js';
 
 const app = createApp();
 const server = http.createServer(app);
@@ -26,8 +27,8 @@ const wss = new WebSocketServer({ noServer: true });
 server.on('upgrade', (req, socket, head) => {
   const { pathname } = new URL(req.url ?? '', 'http://localhost');
 
-  // Rutas WS conocidas: /ws (eco) y /ws/terminal (pty). El resto: 404.
-  if (pathname !== '/ws' && pathname !== '/ws/terminal') {
+  // Rutas WS conocidas: /ws (eco), /ws/terminal (pty), /ws/chat (Claude). Resto: 404.
+  if (pathname !== '/ws' && pathname !== '/ws/terminal' && pathname !== '/ws/chat') {
     socket.write('HTTP/1.1 404 Not Found\r\n\r\n');
     socket.destroy();
     return;
@@ -47,6 +48,9 @@ server.on('upgrade', (req, socket, head) => {
     if (pathname === '/ws/terminal') {
       // pty real: no pasa por el eco (no emitimos 'connection').
       handleTerminalConnection(ws, req, session);
+    } else if (pathname === '/ws/chat') {
+      // Puente del chat con Claude: tampoco pasa por el eco.
+      handleChatConnection(ws, req, session);
     } else {
       wss.emit('connection', ws, req, session);
     }

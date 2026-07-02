@@ -1,15 +1,19 @@
-// Vista Chat — la estrella (CLAUDE.md §4, DESIGN.md §6): réplica de Claude
-// Code en VS Code. Cabecera de conversaciones + hilo con tool-cards + input.
-// Los datos son mock (useChatMock); el puente real con el CLI `claude` llega
-// en Fase 3 y sustituirá el hook manteniendo este modelo de UI.
-import { useChatMock } from './useChatMock'
+// Vista Chat — la estrella (CLAUDE.md §4, DESIGN.md §6): réplica de Claude Code
+// en VS Code, ahora conectada a Claude REAL vía el puente /ws/chat (Agent SDK),
+// con Approve/Reject reales de herramientas. El estado vive en el store singleton
+// (useChatSession) para sobrevivir al remontaje de la vista.
+import { useChatSession } from './useChatSession'
+import { useWorkspace } from '../../workspace/WorkspaceProvider'
 import ChatTabs from './ChatTabs'
 import ChatThread from './ChatThread'
 import ChatComposer from './ChatComposer'
 import styles from './ChatView.module.css'
 
 export default function ChatView() {
-  const chat = useChatMock()
+  const chat = useChatSession()
+  // Lectura del workspace activo → es el `cwd` de cada turno (import en LECTURA).
+  const { workspace } = useWorkspace()
+  const contextLabel = workspace ? (workspace.split('/').filter(Boolean).pop() ?? undefined) : undefined
 
   return (
     <main className={styles.view}>
@@ -20,8 +24,18 @@ export default function ChatView() {
         onSelect={chat.selectSession}
         onAdd={chat.addSession}
       />
-      <ChatThread session={chat.activeSession} onDecideEdit={chat.decideEdit} />
-      <ChatComposer onSend={chat.sendMessage} />
+      <ChatThread session={chat.activeSession} onDecide={chat.decide} />
+      <ChatComposer
+        onSend={(text) => chat.sendMessage(text, workspace)}
+        model={chat.model}
+        modelOptions={chat.modelOptions}
+        onModelChange={chat.setModel}
+        permissionMode={chat.permissionMode}
+        onPermissionChange={chat.setPermissionMode}
+        streaming={chat.activeSession.streaming ?? false}
+        onInterrupt={chat.interrupt}
+        contextLabel={contextLabel}
+      />
     </main>
   )
 }

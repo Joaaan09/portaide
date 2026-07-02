@@ -1,20 +1,48 @@
-// ChatComposer — input del chat, fijo al pie de la vista (DESIGN.md §6):
-// chips de contexto (mock), textarea autoexpandible 1→4 líneas, botón ↑
-// (acento cuando hay texto) y pie con modelo + permission label.
+// ChatComposer — input del chat, fijo al pie de la vista (DESIGN.md §6): chip de
+// contexto (carpeta del workspace), textarea autoexpandible 1→4 líneas, botón ↑
+// (o ■ para interrumpir mientras streamea) y pie con SELECTOR de modelo real +
+// control de permission mode (Ask / Auto-edits / Bypass), cableados al puente.
 import { useRef, useState, type FormEvent, type KeyboardEvent, type PointerEvent } from 'react'
+import type { ChatPermissionMode } from './types'
 import styles from './ChatComposer.module.css'
 
 /** Altura máxima del textarea: ~4 líneas de 19px + padding vertical */
 const MAX_TEXTAREA_HEIGHT = 88
 
+/** Modos de permiso expuestos en el segmented (DESIGN.md §6 / Settings §10). */
+const PERMISSION_OPTIONS: { value: ChatPermissionMode; label: string; title: string }[] = [
+  { value: 'default', label: 'Ask', title: 'Ask before edits' },
+  { value: 'acceptEdits', label: 'Auto-edits', title: 'Auto-approve edits' },
+  { value: 'bypassPermissions', label: 'Bypass', title: 'Bypass all permission checks' },
+]
+
 interface ChatComposerProps {
   onSend: (text: string) => void
+  model: string
+  modelOptions: { value: string; label: string }[]
+  onModelChange: (value: string) => void
+  permissionMode: ChatPermissionMode
+  onPermissionChange: (mode: ChatPermissionMode) => void
+  streaming: boolean
+  onInterrupt: () => void
+  /** Nombre de la carpeta de trabajo activa (chip de contexto). */
+  contextLabel?: string
 }
 
-export default function ChatComposer({ onSend }: ChatComposerProps) {
+export default function ChatComposer({
+  onSend,
+  model,
+  modelOptions,
+  onModelChange,
+  permissionMode,
+  onPermissionChange,
+  streaming,
+  onInterrupt,
+  contextLabel,
+}: ChatComposerProps) {
   const [text, setText] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const canSend = text.trim().length > 0
+  const canSend = text.trim().length > 0 && !streaming
 
   // Autoexpansión: crece con el contenido hasta 4 líneas, luego scroll interno
   const resize = () => {
@@ -46,18 +74,17 @@ export default function ChatComposer({ onSend }: ChatComposerProps) {
     }
   }
 
-  // Evita que el tap en ↑ robe el foco del textarea (el teclado móvil no se cierra)
+  // Evita que el tap en el botón robe el foco del textarea (el teclado no se cierra)
   const keepFocus = (event: PointerEvent) => event.preventDefault()
 
   return (
     <form className={styles.composer} onSubmit={handleSubmit}>
-      {/* Chips de contexto — mock presentacional; serán botones cuando el
-          contexto sea funcional (adjuntar archivos al prompt) */}
-      <div className={styles.chips} aria-hidden="true">
+      {/* Chip de contexto: la carpeta de trabajo activa (cwd del turno) */}
+      <div className={styles.chips}>
         <span className={styles.chip}>
-          <span className={styles.chipAt}>@</span>auth.service.ts
+          <span className={styles.chipAt}>@</span>
+          {contextLabel || 'workspace'}
         </span>
-        <span className={styles.chipGhost}>+ context</span>
       </div>
 
       <div className={styles.box}>
@@ -76,20 +103,64 @@ export default function ChatComposer({ onSend }: ChatComposerProps) {
           enterKeyHint="send"
           autoComplete="off"
         />
-        <button
-          type="submit"
-          className={styles.send}
-          disabled={!canSend}
-          aria-label="Enviar mensaje"
-          onPointerDown={keepFocus}
-        >
-          ↑
-        </button>
+        {streaming ? (
+          <button
+            type="button"
+            className={styles.stop}
+            aria-label="Detener respuesta"
+            onPointerDown={keepFocus}
+            onClick={onInterrupt}
+          >
+            ■
+          </button>
+        ) : (
+          <button
+            type="submit"
+            className={styles.send}
+            disabled={!canSend}
+            aria-label="Enviar mensaje"
+            onPointerDown={keepFocus}
+          >
+            ↑
+          </button>
+        )}
       </div>
 
       <div className={styles.meta}>
-        <span className={styles.model}>claude-sonnet-4.5</span>
-        <span className={styles.permission}>Ask before edits</span>
+        {/* Selector de modelo real (manda set_model) */}
+        <label className={styles.modelWrap}>
+          <span className={styles.srOnly}>Modelo</span>
+          <select
+            className={styles.model}
+            value={model}
+            onChange={(event) => onModelChange(event.target.value)}
+          >
+            {modelOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {/* Permission mode segmented (manda set_permission_mode) */}
+        <div className={styles.segmented} role="group" aria-label="Permission mode">
+          {PERMISSION_OPTIONS.map((opt) => {
+            const active = opt.value === permissionMode
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                className={active ? `${styles.segItem} ${styles.segActive}` : styles.segItem}
+                aria-pressed={active}
+                title={opt.title}
+                onClick={() => onPermissionChange(opt.value)}
+              >
+                {opt.label}
+              </button>
+            )
+          })}
+        </div>
       </div>
     </form>
   )

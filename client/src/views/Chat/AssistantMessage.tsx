@@ -3,12 +3,13 @@
 // tool-cards (Read/Edit/Bash) y texto final.
 import { useState } from 'react'
 import type { AssistantBlock, AssistantChatItem, ThinkingBlock, UserEditDecision } from './types'
-import { BashCard, EditCard, ReadCard } from './ToolCards'
+import { BashCard, EditCard, GenericToolCard, ReadCard } from './ToolCards'
 import styles from './AssistantMessage.module.css'
 
 interface AssistantMessageProps {
   item: AssistantChatItem
-  onDecideEdit: (blockId: string, decision: UserEditDecision) => void
+  /** Approve/Reject de una tool pendiente: `requestId` = id del permiso. */
+  onDecide: (requestId: string, decision: UserEditDecision) => void
 }
 
 /* Thinking colapsable: "Thought for a moment" → bloque con borde izquierdo */
@@ -36,17 +37,19 @@ function ThinkingDisclosure({ block }: { block: ThinkingBlock }) {
 function renderBlock(
   block: AssistantBlock,
   index: number,
-  onDecideEdit: AssistantMessageProps['onDecideEdit'],
+  onDecide: AssistantMessageProps['onDecide'],
 ) {
   switch (block.type) {
     case 'thinking':
       return <ThinkingDisclosure key={index} block={block} />
     case 'read':
-      return <ReadCard key={index} block={block} />
+      return <ReadCard key={block.id} block={block} />
     case 'edit':
-      return <EditCard key={block.id} block={block} onDecide={onDecideEdit} />
+      return <EditCard key={block.id} block={block} onDecide={onDecide} />
     case 'bash':
-      return <BashCard key={index} block={block} />
+      return <BashCard key={block.id} block={block} onDecide={onDecide} />
+    case 'tool':
+      return <GenericToolCard key={block.id} block={block} onDecide={onDecide} />
     case 'text':
       return (
         <p key={index} className={styles.text}>
@@ -56,7 +59,7 @@ function renderBlock(
   }
 }
 
-export default function AssistantMessage({ item, onDecideEdit }: AssistantMessageProps) {
+export default function AssistantMessage({ item, onDecide }: AssistantMessageProps) {
   return (
     <div className={styles.message}>
       <div className={styles.header}>
@@ -65,7 +68,7 @@ export default function AssistantMessage({ item, onDecideEdit }: AssistantMessag
         </span>
         <span className={styles.name}>Claude Code</span>
       </div>
-      {item.blocks.map((block, i) => renderBlock(block, i, onDecideEdit))}
+      {item.blocks.map((block, i) => renderBlock(block, i, onDecide))}
     </div>
   )
 }

@@ -1,7 +1,7 @@
 // ChatThread — hilo de la conversación (DESIGN.md §6): burbujas de usuario,
-// mensajes del asistente, indicador de typing y estado vacío de chat nuevo.
-// El scroll vive aquí (patrón app-shell, DESIGN.md §5) y baja solo al fondo
-// cuando entra un item nuevo o se cambia de conversación.
+// mensajes del asistente con sus tool-cards, indicador de streaming y estado
+// vacío de chat nuevo. El scroll vive aquí (patrón app-shell, DESIGN.md §5) y
+// se pega al fondo cuando entra un item nuevo o mientras streamea la respuesta.
 import { useEffect, useRef } from 'react'
 import type { ChatItem, ChatSession, UserEditDecision } from './types'
 import AssistantMessage from './AssistantMessage'
@@ -9,7 +9,7 @@ import styles from './ChatThread.module.css'
 
 interface ChatThreadProps {
   session: ChatSession
-  onDecideEdit: (blockId: string, decision: UserEditDecision) => void
+  onDecide: (requestId: string, decision: UserEditDecision) => void
 }
 
 /* Tres puntos --accent con la animación `dot` (DESIGN.md §11) */
@@ -36,18 +36,29 @@ function EmptyState() {
   )
 }
 
-export default function ChatThread({ session, onDecideEdit }: ChatThreadProps) {
+/** Señal barata que cambia mientras streamea el último mensaje (para auto-scroll). */
+function streamingTick(session: ChatSession): number {
+  const last = session.items[session.items.length - 1]
+  if (!last || last.kind !== 'assistant') return 0
+  let tick = last.blocks.length
+  const lb = last.blocks[last.blocks.length - 1]
+  if (lb && (lb.type === 'text' || lb.type === 'thinking')) tick += lb.text.length
+  return tick
+}
+
+export default function ChatThread({ session, onDecide }: ChatThreadProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  // Auto-scroll al fondo cuando entra un item (mensaje o typing) o al cambiar
-  // de conversación. Depende del ÚLTIMO id y no del array completo para no
-  // saltar al fondo al aprobar/rechazar una card antigua.
+  // Auto-scroll al fondo cuando entra un item, al cambiar de conversación o
+  // mientras crece la respuesta en streaming (tick). No depende del array
+  // completo para no saltar al aprobar/rechazar una card antigua.
   const lastItem = session.items[session.items.length - 1]
   const lastItemId = lastItem?.id
+  const tick = streamingTick(session)
   useEffect(() => {
     const el = scrollRef.current
     if (el) el.scrollTop = el.scrollHeight
-  }, [session.id, lastItemId])
+  }, [session.id, lastItemId, tick])
 
   const renderItem = (item: ChatItem) => {
     switch (item.kind) {
@@ -60,13 +71,10 @@ export default function ChatThread({ session, onDecideEdit }: ChatThreadProps) {
       case 'assistant':
         return (
           <li key={item.id} className={styles.assistantItem}>
-            <AssistantMessage item={item} onDecideEdit={onDecideEdit} />
-          </li>
-        )
-      case 'typing':
-        return (
-          <li key={item.id} className={styles.assistantItem}>
-            <TypingIndicator />
+            <div className={styles.assistantCol}>
+              <AssistantMessage item={item} onDecide={onDecide} />
+              {item.streaming && <TypingIndicator />}
+            </div>
           </li>
         )
     }

@@ -36,6 +36,15 @@
   justify-content: flex-end;
 }
 
+/* Columna del asistente: mensaje + indicador de streaming apilados */
+.assistantCol {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+
 @keyframes itemIn {
   from {
     opacity: 0;

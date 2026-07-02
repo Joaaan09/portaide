@@ -64,6 +64,13 @@
   color: var(--accent);
 }
 
+/* Icono de tool genérica (Grep, WebFetch…): acento secundario para diferenciar */
+.genericIcon {
+  font-size: 11px;
+  line-height: 1;
+  color: var(--accent2);
+}
+
 /* Contadores +N/−M — mono por DESIGN.md §2 (cifras técnicas) */
 .editAdd,
 .editDel {

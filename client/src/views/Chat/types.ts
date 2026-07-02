@@ -1,7 +1,9 @@
-// Modelo de datos UI-first de la vista Chat (CLAUDE.md §4, DESIGN.md §6).
-// OJO: esto modela lo que PINTA la vista, NO el protocolo stream-json del
-// CLI `claude` (el puente está por decidir — ver .progreso/decisiones.md).
-// Cuando exista el puente, sus eventos se mapearán a estas estructuras.
+// Modelo de datos de la vista Chat (CLAUDE.md §4, DESIGN.md §6). Es lo que PINTA
+// la vista; los eventos del puente real (/ws/chat, Agent SDK) se mapean a estas
+// estructuras en chatStore.ts (thinking → texto → tarjetas de tool → done).
+
+/** Modos de permiso que expone la UI (Ask / Auto-edits / Bypass). */
+export type ChatPermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions'
 
 /** Línea de un diff dentro de una tool-card Edit (colores en DESIGN.md §3) */
 export interface DiffLine {
@@ -24,16 +26,20 @@ export interface ThinkingBlock {
 /** Tool-card Read: lectura de un archivo */
 export interface ReadToolBlock {
   type: 'read'
+  /** id del tool_use (para casar el tool_result que trae la meta) */
+  id: string
   file: string
-  /** Meta a la derecha de la fila, p.ej. "142 lines" */
+  /** Meta a la derecha de la fila, p.ej. "142 lines" (se rellena al resolver) */
   meta: string
 }
 
 /** Tool-card Edit: propuesta de edición con diff + Approve/Reject */
 export interface EditToolBlock {
   type: 'edit'
-  /** Identificador estable del bloque (para mutar su decisión desde la UI) */
+  /** id del tool_use — casa el permission_request (requestId = toolUseID) */
   id: string
+  /** requestId de la aprobación pendiente; presente ⇒ se muestran los botones */
+  requestId?: string
   file: string
   additions: number
   deletions: number
@@ -47,11 +53,27 @@ export interface BashOutputLine {
   ok?: boolean
 }
 
-/** Tool-card Bash: comando + salida */
+/** Tool-card Bash: comando + salida (+ estado de aprobación real) */
 export interface BashToolBlock {
   type: 'bash'
+  id: string
+  requestId?: string
   command: string
   output: BashOutputLine[]
+  decision: EditDecision
+  /** Resultado de la ejecución (lo fija el tool_result). */
+  ok?: boolean
+}
+
+/** Tool-card genérica: cualquier otra herramienta (WebFetch, Grep, …) */
+export interface GenericToolBlock {
+  type: 'tool'
+  id: string
+  requestId?: string
+  name: string
+  meta: string
+  decision: EditDecision
+  ok?: boolean
 }
 
 /** Texto plano del asistente (markdown-plano por ahora) */
@@ -66,7 +88,11 @@ export type AssistantBlock =
   | ReadToolBlock
   | EditToolBlock
   | BashToolBlock
+  | GenericToolBlock
   | TextBlock
+
+/** Bloques de tool con estado de aprobación (Edit / Bash / genérico) */
+export type ApprovableBlock = EditToolBlock | BashToolBlock | GenericToolBlock
 
 /** Burbuja del usuario (derecha, fondo --accent) */
 export interface UserChatItem {
@@ -80,20 +106,21 @@ export interface AssistantChatItem {
   kind: 'assistant'
   id: string
   blocks: AssistantBlock[]
-}
-
-/** Indicador "Claude está escribiendo" (tres puntos --accent) */
-export interface TypingChatItem {
-  kind: 'typing'
-  id: string
+  /** true mientras el turno sigue llegando (muestra el indicador de typing) */
+  streaming?: boolean
 }
 
 /** Item del hilo: unión discriminada por `kind` */
-export type ChatItem = UserChatItem | AssistantChatItem | TypingChatItem
+export type ChatItem = UserChatItem | AssistantChatItem
 
 /** Una conversación = una pestaña de la cabecera del chat */
 export interface ChatSession {
+  /** id local de la pestaña (o el id del server si hay persistencia). */
   id: string
   name: string
   items: ChatItem[]
+  /** session_id de Claude para reanudar (`resume`); null hasta el 1er turno. */
+  claudeSessionId?: string
+  /** true mientras un turno de ESTA conversación está en curso. */
+  streaming?: boolean
 }

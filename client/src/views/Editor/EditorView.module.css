@@ -1,0 +1,424 @@
+/* Vista Editor (DESIGN.md §7): pestañas + breadcrumb + área CodeMirror + barra
+   de símbolos. Columna única, densa, separada por bordes de 1px. Solo tokens --*
+   (los literales de los badges de extensión son la excepción documentada en §3). */
+
+.view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Título de la vista solo para lectores de pantalla (DESIGN.md §12) */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---------- Tira de pestañas ---------- */
+
+.tabsBar {
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.tabsBar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Item = botón de selección + botón de cierre; el estado activo (fondo +
+   subrayado) vive aquí para que ambos botones lo compartan. */
+.tabItem {
+  display: flex;
+  align-items: stretch;
+  flex: none;
+  border-right: 1px solid var(--border);
+  border-bottom: 2px solid transparent;
+}
+
+.tabItemActive {
+  border-bottom-color: var(--accent);
+  background: var(--surface2);
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 44px;
+  max-width: 190px;
+  padding: 9px 6px 9px 11px;
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+/* Badge de extensión (DESIGN.md §3). El color concreto se aplica inline. */
+.badge {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 5px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: lowercase;
+}
+
+.badgeNeutral {
+  background: var(--surface2);
+  color: var(--dim);
+}
+
+.tabName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12.5px;
+  color: var(--faint);
+}
+
+.tabItemActive .tabName {
+  color: var(--text);
+}
+
+/* Punto de modificado (DESIGN.md §7) */
+.dirtyDot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--glow);
+}
+
+.tabClose {
+  flex: none;
+  width: 30px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px 0 2px;
+  border: 0;
+  background: transparent;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--faint);
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.tabClose:hover {
+  color: var(--text);
+}
+
+.tab:focus-visible,
+.tabClose:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* ---------- Cabecera: breadcrumb + guardar ---------- */
+
+.header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.crumb {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  overflow: hidden;
+  white-space: nowrap;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11.5px;
+  color: var(--faint);
+}
+
+.crumbItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.crumbSep {
+  color: var(--faint);
+  opacity: 0.6;
+}
+
+/* Nombre del archivo (hoja del breadcrumb): un pelín más legible */
+.crumbLeaf {
+  color: var(--dim);
+}
+
+.save {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface2);
+  color: var(--faint);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11.5px;
+  cursor: pointer;
+  transition:
+    transform 0.16s ease-out,
+    background-color 0.15s ease;
+}
+
+/* Con cambios sin guardar (o guardando) → primario en acento (DESIGN.md §3) */
+.saveDirty {
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+
+.save:active {
+  transform: scale(0.97);
+}
+
+.save:disabled {
+  cursor: default;
+}
+
+.save:focus-visible {
+  outline: 2px solid var(--accent2);
+  outline-offset: 2px;
+}
+
+/* Spinner pequeño para el botón de guardar */
+.spinnerSm {
+  width: 11px;
+  height: 11px;
+  border: 2px solid color-mix(in srgb, var(--on-accent) 35%, transparent);
+  border-top-color: var(--on-accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+/* ---------- Avisos (truncado / error de guardado) ---------- */
+
+.notice {
+  flex: none;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--yellow);
+}
+
+.saveError {
+  flex: none;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--red) 10%, var(--surface));
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--red);
+}
+
+/* ---------- Área de código (CodeMirror) ---------- */
+
+.stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+/* Contenedor de CodeMirror: rellena el stage; el scroll vive dentro de CM. */
+.cmHost {
+  position: absolute;
+  inset: 0;
+}
+
+/* Overlay sobrio de estado (carga / error) */
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 20px;
+  text-align: center;
+  background: var(--bg);
+}
+
+.overlayText {
+  margin: 0;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12.5px;
+  color: var(--dim);
+}
+
+.spinner {
+  width: 15px;
+  height: 15px;
+  border: 2px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+.retry {
+  min-height: 40px;
+  padding: 9px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface2);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.16s ease-out;
+}
+
+.retry:active {
+  transform: scale(0.98);
+}
+
+.retry:focus-visible {
+  outline: 2px solid var(--accent2);
+  outline-offset: 2px;
+}
+
+/* ---------- Estado vacío ---------- */
+
+.empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 32px;
+  text-align: center;
+}
+
+.emptyGlyph {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 26px;
+  color: var(--faint);
+}
+
+.emptyTitle {
+  margin: 0;
+  font-size: 14px;
+  color: var(--dim);
+}
+
+.emptyHint {
+  margin: 0;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--faint);
+}
+
+/* ---------- Barra de símbolos (DESIGN.md §7) ---------- */
+
+.symbar {
+  flex: none;
+  display: flex;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.symbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Celdas mono ~44px (≥44px táctiles), separadas por --border (DESIGN.md §7) */
+.symkey {
+  flex: none;
+  min-width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  border: 0;
+  border-right: 1px solid var(--border);
+  background: transparent;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 15px;
+  color: var(--dim);
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+}
+
+.symkey:active {
+  background: var(--surface2);
+}
+
+.symkey:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* ---------- Movimiento (DESIGN.md §11) ---------- */
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tabClose,
+  .save,
+  .retry,
+  .symkey {
+    transition: none;
+  }
+
+  .save:active,
+  .retry:active {
+    transform: none;
+  }
+
+  .spinner,
+  .spinnerSm {
+    animation: none;
+  }
+}
