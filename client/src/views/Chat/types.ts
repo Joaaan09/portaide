@@ -2,8 +2,14 @@
 // la vista; los eventos del puente real (/ws/chat, Agent SDK) se mapean a estas
 // estructuras en chatStore.ts (thinking → texto → tarjetas de tool → done).
 
-/** Modos de permiso que expone la UI (Ask / Auto-edits / Bypass). */
-export type ChatPermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions'
+/** Modos de permiso que expone la UI (Ask / Plan / Auto-edits / Bypass). */
+export type ChatPermissionMode = 'default' | 'plan' | 'acceptEdits' | 'bypassPermissions'
+
+/** Niveles de esfuerzo del engine (SDK `options.effort`). */
+export type ChatEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+
+/** Ajuste de esfuerzo del composer: un nivel o 'auto' (= no enviar, default del engine). */
+export type ChatEffortSetting = ChatEffort | 'auto'
 
 /** Línea de un diff dentro de una tool-card Edit (colores en DESIGN.md §3) */
 export interface DiffLine {

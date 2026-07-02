@@ -32,6 +32,9 @@ export default function ChatView() {
         onModelChange={chat.setModel}
         permissionMode={chat.permissionMode}
         onPermissionChange={chat.setPermissionMode}
+        effort={chat.effort}
+        effortOptions={chat.effortOptions}
+        onEffortChange={chat.setEffort}
         streaming={chat.activeSession.streaming ?? false}
         onInterrupt={chat.interrupt}
         contextLabel={contextLabel}

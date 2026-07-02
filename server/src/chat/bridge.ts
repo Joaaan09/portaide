@@ -10,6 +10,7 @@
 import {
   query,
   type CanUseTool,
+  type EffortLevel,
   type Options,
   type PermissionMode,
   type PermissionResult,
@@ -20,6 +21,9 @@ import type { WebSocket } from 'ws';
 
 /** Modos de permiso que expone la UI (subset de PermissionMode del SDK). */
 export type ChatPermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
+
+/** Niveles de esfuerzo del engine (SDK `options.effort`; undefined = default). */
+export type ChatEffort = EffortLevel;
 
 /** Mensajes server→cliente del protocolo de UI (ver ws.ts / useChatSession.ts). */
 type OutMsg =
@@ -44,6 +48,8 @@ export interface RunTurnParams {
   /** Override de modelo (undefined = default del engine en ~/.claude). */
   model?: string;
   permissionMode: ChatPermissionMode;
+  /** Nivel de esfuerzo (undefined = default del engine; el engine lo ignora si el modelo no lo soporta). */
+  effort?: ChatEffort;
   /** Se llama con el session_id del init (para reanudar el próximo turno). */
   onSession: (sessionId: string) => void;
   /** Se llama al cerrar el turno (result/error/interrupt) para liberar el slot. */
@@ -106,7 +112,7 @@ function flattenContent(content: unknown): string {
  * `onDone`.
  */
 export function runChatTurn(params: RunTurnParams): ChatTurn {
-  const { ws, cwd, userText, resumeSessionId, model, permissionMode } = params;
+  const { ws, cwd, userText, resumeSessionId, model, permissionMode, effort } = params;
 
   const send = (msg: OutMsg): void => {
     if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
@@ -167,6 +173,8 @@ export function runChatTurn(params: RunTurnParams): ChatTurn {
     abortController: abort,
     ...(resumeSessionId ? { resume: resumeSessionId } : {}),
     ...(model ? { model } : {}),
+    // Si el modelo no soporta effort, el engine lo ignora (downgrade silencioso).
+    ...(effort ? { effort } : {}),
     // bypassPermissions exige este flag explícito en el SDK.
     ...(permissionMode === 'bypassPermissions'
       ? { allowDangerouslySkipPermissions: true }

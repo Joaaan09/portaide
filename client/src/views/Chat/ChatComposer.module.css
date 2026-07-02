@@ -170,15 +170,12 @@
   outline-offset: 2px;
 }
 
-/* ---------- Pie: selector de modelo + permission mode ---------- */
+/* ---------- Pie: resumen + panel desplegable de controles ---------- */
 
-.meta {
+.footer {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  flex-direction: column;
   margin-top: 6px;
-  padding: 0 2px;
 }
 
 /* Oculto accesible (label del select) */
@@ -194,22 +191,127 @@
   border: 0;
 }
 
-.modelWrap {
-  flex: none;
-  display: inline-flex;
+/* Disparador del panel: resumen mono a la izquierda, chevron a la derecha */
+.settingsToggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 30px;
+  padding: 4px 4px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  color: var(--faint);
+  -webkit-tap-highlight-color: transparent;
 }
 
-/* Select de modelo: se ve como el label mono --faint del mockup, sin chrome nativo */
-.model {
-  appearance: none;
-  -webkit-appearance: none;
-  padding: 2px 4px;
-  border: 0;
+.settingsToggle:focus-visible {
+  outline: 2px solid var(--accent2);
+  outline-offset: 1px;
   border-radius: 6px;
-  background: transparent;
+}
+
+.settingsIcon {
+  flex: none;
+  display: flex;
+  align-items: center;
+  color: var(--dim);
+}
+
+/* Resumen del estado actual (modelo · permiso · esfuerzo) en mono */
+.summary {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
   font-family: 'JetBrains Mono', monospace;
   font-size: 10px;
   color: var(--faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+
+.summarySep {
+  color: var(--border);
+}
+
+/* Chevron: apunta hacia arriba (el panel se abre hacia arriba); gira al abrir */
+.caret {
+  flex: none;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--dim);
+  transition: transform 0.16s ease;
+}
+
+.caretOpen {
+  transform: rotate(180deg);
+}
+
+/* ---------- Panel de controles (colapsable) ---------- */
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  padding: 10px 4px 12px;
+  animation: controlsIn 0.18s ease;
+}
+
+@keyframes controlsIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.controlRow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.controlHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.controlLabel {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.modelWrap {
+  display: inline-flex;
+  align-self: flex-start;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+/* Select de modelo: mono, sin chrome nativo (etiqueta con versión) */
+.model {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--text);
   cursor: pointer;
 }
 
@@ -224,27 +326,30 @@
   color: var(--text);
 }
 
-/* Segmented de permission mode (Ask / Auto-edits / Bypass) */
+/* Segmented de permission mode (Ask / Plan / Auto-edits / Bypass): fila completa */
 .segmented {
-  flex: none;
-  display: inline-flex;
+  display: flex;
   gap: 2px;
   padding: 2px;
-  border-radius: 8px;
+  border-radius: 9px;
   background: var(--bg);
   border: 1px solid var(--border);
 }
 
 .segItem {
-  padding: 3px 8px;
+  flex: 1;
+  min-width: 0;
+  padding: 6px 4px;
   border: 0;
-  border-radius: 6px;
+  border-radius: 7px;
   background: transparent;
   font-family: inherit;
-  font-size: 10px;
+  font-size: 11px;
+  white-space: nowrap;
   color: var(--dim);
   cursor: pointer;
   transition: background-color 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .segItem:focus-visible {
@@ -256,6 +361,84 @@
   background: var(--accent);
   color: var(--on-accent);
   font-weight: 600;
+}
+
+/* Valor actual del esfuerzo, mono en acento */
+.effortValue {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--accent);
+}
+
+/* ---------- Slider de esfuerzo (Auto · Low · … · Max) ---------- */
+
+/* 44px de zona táctil vertical; el track visible es fino y centrado */
+.effortSlider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.effortSlider:focus-visible {
+  outline: none;
+}
+
+/* --- Track --- */
+.effortSlider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface2);
+}
+
+.effortSlider::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface2);
+}
+
+/* --- Thumb --- */
+.effortSlider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -7px; /* centra el thumb (18px) sobre el track (4px) */
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--surface);
+  box-shadow: 0 0 0 1px var(--border);
+  transition: transform 0.14s ease;
+}
+
+.effortSlider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--surface);
+  box-shadow: 0 0 0 1px var(--border);
+  transition: transform 0.14s ease;
+}
+
+.effortSlider:active::-webkit-slider-thumb {
+  transform: scale(1.12);
+}
+
+.effortSlider:active::-moz-range-thumb {
+  transform: scale(1.12);
+}
+
+.effortSlider:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 2px var(--accent2);
+}
+
+.effortSlider:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 2px var(--accent2);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -273,5 +456,23 @@
 
   .stop {
     transition: none;
+  }
+
+  .caret {
+    transition: none;
+  }
+
+  .controls {
+    animation: none;
+  }
+
+  .effortSlider::-webkit-slider-thumb,
+  .effortSlider::-moz-range-thumb {
+    transition: none;
+  }
+
+  .effortSlider:active::-webkit-slider-thumb,
+  .effortSlider:active::-moz-range-thumb {
+    transform: none;
   }
 }

@@ -167,8 +167,22 @@ Réplica de Claude Code en VS Code (ver [CLAUDE.md](CLAUDE.md) §4). Estructura:
     - Texto final del mensaje en `--text`.
   - **Typing**: tres puntos `--accent` con animación `dot`.
 - **Input** (fijo abajo): fila de chips de contexto (`@archivo`, `+ context`), caja `--bg` con borde,
-  placeholder "Ask Claude to build, fix, refactor…", botón **↑** (acento cuando hay texto). Debajo:
-  **modelo** (mono, `--faint`, p.ej. `claude-sonnet-4.5`) + **permission label** ("Ask before edits" / etc.).
+  placeholder "Ask Claude to build, fix, refactor…", botón **↑** (acento cuando hay texto). Debajo, el
+  **pie de controles**:
+  - **Resumen colapsado** (por defecto): fila-botón con un icono de ajustes (`--dim`) + resumen en mono
+    `--faint` `modelo · permiso · esfuerzo` (p.ej. `Opus 4.8 · Ask · Auto`) + chevron. Un tap despliega
+    el panel **hacia arriba** (el composer está anclado abajo); el chevron gira 180°. Mantiene el pie
+    limpio a una mano. Persiste todo en `localStorage` (`portaide:chat:{model,permission,effort}`).
+  - **Panel de controles** (expandido), tres filas etiquetadas en mono `--dim` (uppercase):
+    - **Model**: `select` mono sin chrome nativo, valor = alias (`fable`/`opus`/`sonnet`/`haiku`, o "Por
+      defecto" = `~/.claude`), etiqueta con versión (Fable 5, Opus 4.8, Sonnet 5, Haiku 4.5). Manda `set_model`.
+    - **Permissions**: segmented full-width de 4 (Ask / Plan / Auto-edits / Bypass); activo en `--accent`
+      sobre `--on-accent`. Manda `set_permission_mode` (Plan = planifica sin tocar nada; Bypass = `clauded`).
+    - **Effort**: slider `range` de 6 topes (Auto · Low · Medium · High · xHigh · Max), track `--surface2`,
+      thumb `--accent`, ≥44px de zona táctil, valor actual en mono `--accent`. Auto no envía nada (default
+      del engine); los demás viajan como `effort` en el `user_message`. `aria-valuetext` con el nivel.
+  - Motion (§11): el panel entra con fade+`translateY(4px)` (.18s ease); `prefers-reduced-motion` desactiva
+    la animación, el giro del chevron y el rebote del thumb.
 
 ## 7. Vista Editor
 

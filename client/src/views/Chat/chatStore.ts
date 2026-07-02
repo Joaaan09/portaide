@@ -7,6 +7,7 @@
 import type {
   AssistantBlock,
   AssistantChatItem,
+  ChatEffortSetting,
   ChatItem,
   ChatPermissionMode,
   ChatSession,
@@ -15,12 +16,27 @@ import type {
   UserEditDecision,
 } from './types'
 
-/** Modelos seleccionables. '' = default del engine (config de ~/.claude). */
+/**
+ * Modelos seleccionables. El valor es el alias (robusto: resuelve al último de
+ * cada familia); '' = default del engine (config de ~/.claude). La etiqueta
+ * lleva la versión concreta (informativa; el alias sigue mandando).
+ */
 export const MODEL_OPTIONS: { value: string; label: string }[] = [
-  { value: '', label: 'default' },
-  { value: 'sonnet', label: 'sonnet' },
-  { value: 'opus', label: 'opus' },
-  { value: 'haiku', label: 'haiku' },
+  { value: '', label: 'Por defecto' },
+  { value: 'fable', label: 'Fable 5' },
+  { value: 'opus', label: 'Opus 4.8' },
+  { value: 'sonnet', label: 'Sonnet 5' },
+  { value: 'haiku', label: 'Haiku 4.5' },
+]
+
+/** Topes del slider de esfuerzo. 'auto' = no enviar effort (default del engine). */
+export const EFFORT_STEPS: { value: ChatEffortSetting; label: string }[] = [
+  { value: 'auto', label: 'Auto' },
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+  { value: 'xhigh', label: 'xHigh' },
+  { value: 'max', label: 'Max' },
 ]
 
 export type ConnStatus = 'connecting' | 'open' | 'closed'
@@ -31,8 +47,59 @@ export interface StoreSnapshot {
   activeId: string
   model: string
   permissionMode: ChatPermissionMode
+  effort: ChatEffortSetting
   connStatus: ConnStatus
   loading: boolean
+}
+
+// --- Preferencias persistidas (localStorage) -------------------------------
+
+const LS_MODEL = 'portaide:chat:model'
+const LS_PERMISSION = 'portaide:chat:permission'
+const LS_EFFORT = 'portaide:chat:effort'
+
+const MODEL_VALUES = new Set(MODEL_OPTIONS.map((o) => o.value))
+const PERMISSION_VALUES: ReadonlySet<ChatPermissionMode> = new Set([
+  'default',
+  'plan',
+  'acceptEdits',
+  'bypassPermissions',
+])
+const EFFORT_VALUES = new Set(EFFORT_STEPS.map((o) => o.value))
+
+function lsGet(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key)
+  } catch {
+    return null // modo privado / storage deshabilitado
+  }
+}
+
+function lsSet(key: string, value: string): void {
+  try {
+    window.localStorage.setItem(key, value)
+  } catch {
+    /* cuota llena / storage deshabilitado: la preferencia vive solo en memoria */
+  }
+}
+
+function initialModel(): string {
+  const v = lsGet(LS_MODEL)
+  return v !== null && MODEL_VALUES.has(v) ? v : ''
+}
+
+function initialPermission(): ChatPermissionMode {
+  const v = lsGet(LS_PERMISSION)
+  return v !== null && PERMISSION_VALUES.has(v as ChatPermissionMode)
+    ? (v as ChatPermissionMode)
+    : 'default'
+}
+
+function initialEffort(): ChatEffortSetting {
+  const v = lsGet(LS_EFFORT)
+  return v !== null && EFFORT_VALUES.has(v as ChatEffortSetting)
+    ? (v as ChatEffortSetting)
+    : 'auto'
 }
 
 // --- Utilidades ------------------------------------------------------------
@@ -138,8 +205,9 @@ class ChatStore {
   private state: StoreSnapshot = {
     sessions: [],
     activeId: '',
-    model: '',
-    permissionMode: 'default',
+    model: initialModel(),
+    permissionMode: initialPermission(),
+    effort: initialEffort(),
     connStatus: 'closed',
     loading: true,
   }
@@ -490,6 +558,8 @@ class ChatStore {
       text: trimmed,
       ...(cwd ? { cwd } : {}),
       ...(session.claudeSessionId ? { sessionId: session.claudeSessionId } : {}),
+      // effort viaja por-mensaje; se omite en 'auto' (usa el default del engine).
+      ...(this.state.effort !== 'auto' ? { effort: this.state.effort } : {}),
     })
   }
 
@@ -503,12 +573,20 @@ class ChatStore {
 
   setModel = (model: string): void => {
     this.setState({ model })
+    lsSet(LS_MODEL, model)
     this.raw({ type: 'set_model', model })
   }
 
   setPermissionMode = (mode: ChatPermissionMode): void => {
     this.setState({ permissionMode: mode })
+    lsSet(LS_PERMISSION, mode)
     this.raw({ type: 'set_permission_mode', mode })
+  }
+
+  // El esfuerzo no se sincroniza en caliente (viaja en el próximo user_message).
+  setEffort = (effort: ChatEffortSetting): void => {
+    this.setState({ effort })
+    lsSet(LS_EFFORT, effort)
   }
 
   interrupt = (): void => {

@@ -4,8 +4,13 @@
 // sobrevivir al remontaje de ChatView (AppShell usa key={view}); aquí sólo lo
 // leemos con useSyncExternalStore y exponemos las acciones.
 import { useSyncExternalStore } from 'react'
-import type { ChatPermissionMode, ChatSession, UserEditDecision } from './types'
-import { chatStore, MODEL_OPTIONS, type ConnStatus } from './chatStore'
+import type {
+  ChatEffortSetting,
+  ChatPermissionMode,
+  ChatSession,
+  UserEditDecision,
+} from './types'
+import { chatStore, EFFORT_STEPS, MODEL_OPTIONS, type ConnStatus } from './chatStore'
 
 export interface ChatApi {
   sessions: ChatSession[]
@@ -13,9 +18,11 @@ export interface ChatApi {
   activeId: string
   model: string
   permissionMode: ChatPermissionMode
+  effort: ChatEffortSetting
   connStatus: ConnStatus
   loading: boolean
   modelOptions: { value: string; label: string }[]
+  effortOptions: { value: ChatEffortSetting; label: string }[]
   selectSession: (id: string) => void
   addSession: () => void
   /** Envía un mensaje del usuario en la conversación activa (con el cwd del workspace). */
@@ -24,6 +31,7 @@ export interface ChatApi {
   decide: (requestId: string, decision: UserEditDecision) => void
   setModel: (model: string) => void
   setPermissionMode: (mode: ChatPermissionMode) => void
+  setEffort: (effort: ChatEffortSetting) => void
   interrupt: () => void
 }
 
@@ -40,15 +48,18 @@ export function useChatSession(): ChatApi {
     activeId: activeSession.id,
     model: snap.model,
     permissionMode: snap.permissionMode,
+    effort: snap.effort,
     connStatus: snap.connStatus,
     loading: snap.loading,
     modelOptions: MODEL_OPTIONS,
+    effortOptions: EFFORT_STEPS,
     selectSession: chatStore.selectSession,
     addSession: chatStore.addSession,
     sendMessage: chatStore.sendMessage,
     decide: chatStore.decide,
     setModel: chatStore.setModel,
     setPermissionMode: chatStore.setPermissionMode,
+    setEffort: chatStore.setEffort,
     interrupt: chatStore.interrupt,
   }
 }

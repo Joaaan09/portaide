@@ -11,7 +11,7 @@ import type { IncomingMessage } from 'node:http';
 import type { WebSocket } from 'ws';
 import type { WsSession } from '../auth/ws.js';
 import { FS_ROOT, resolveSafe } from '../fs/paths.js';
-import { runChatTurn, type ChatPermissionMode, type ChatTurn } from './bridge.js';
+import { runChatTurn, type ChatEffort, type ChatPermissionMode, type ChatTurn } from './bridge.js';
 
 const VALID_MODES: ReadonlySet<ChatPermissionMode> = new Set([
   'default',
@@ -19,6 +19,21 @@ const VALID_MODES: ReadonlySet<ChatPermissionMode> = new Set([
   'bypassPermissions',
   'plan',
 ]);
+
+const VALID_EFFORT: ReadonlySet<ChatEffort> = new Set([
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+]);
+
+/** Valida el effort del cliente; nivel desconocido (incl. 'auto') → undefined (default). */
+function safeEffort(requested: unknown): ChatEffort | undefined {
+  return typeof requested === 'string' && VALID_EFFORT.has(requested as ChatEffort)
+    ? (requested as ChatEffort)
+    : undefined;
+}
 
 /** Resuelve el cwd del cliente bajo FS_ROOT; si es inválido o no es dir → FS_ROOT. */
 function safeCwd(requested: unknown): string {
@@ -42,6 +57,7 @@ interface ClientMessage {
   updatedInput?: unknown;
   model?: unknown;
   mode?: unknown;
+  effort?: unknown;
 }
 
 export function handleChatConnection(
@@ -77,6 +93,9 @@ export function handleChatConnection(
         }
         const cwd = safeCwd(msg.cwd);
         const resumeSessionId = typeof msg.sessionId === 'string' ? msg.sessionId : undefined;
+        // effort viaja por-mensaje (no es estado de conexión): se lee aquí y se
+        // pasa al turno. Ausente o 'auto' → undefined (default del engine).
+        const effort = safeEffort(msg.effort);
         turn = runChatTurn({
           ws,
           cwd,
@@ -84,6 +103,7 @@ export function handleChatConnection(
           resumeSessionId,
           model: currentModel,
           permissionMode: currentMode,
+          effort,
           onSession: () => {
             /* el cliente guarda el sessionId; aquí no hace falta retenerlo */
           },
