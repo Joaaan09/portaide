@@ -4,6 +4,18 @@
 
 ---
 
+2026-07-02 (3ª sesión · lote UX móvil) — Sobre el desplegado, feedback del usuario → 3 subagentes en
+paralelo + Settings: **cerrar pestañas** (chat ✕ con DELETE best-effort; editor ya iba), **isla de
+navegación arrastrable** (Pointer Events, tap-vs-drag, posición persistida, clamp con safe-area),
+**pull-to-refresh** (portado de total-grind, adaptado al scroll por-vista, solo standalone), y
+**"Ultracode"** como tope del slider de esfuerzo (activa workflows multiagente vía
+`options.settings.enableWorkflows` + effort max). Además se **commiteó y desplegó la vista Settings**
+completa que estaba sin commitear (Account + Appearance [tema + tamaño de fuente] + System con
+`/api/system` real tras el gate) y se arregló el timeout de `claude --version` (2s→10s: el CLI tarda
+~4.3s en arrancar en el contenedor). Verificado: pila healthy, `/api/system` OK (claude 2.1.197, mongo
+conectado), gate 401 sin sesión. Pendiente del usuario: QA del gesto de arrastre y del pull-to-refresh
+en el iPhone. DESIGN.md §13/13b/13c documentados.
+
 2026-07-02 (3ª sesión · iteración post-deploy) — Feedback del usuario en móvil: **arreglado el auto-zoom
 de iOS** al escribir (viewport `maximum-scale=1, user-scalable=no`); **mejorados los controles del composer
 del Chat**: selector de modelo con versión + **Fable 5** (verificado que el CLI acepta `--model claude-fable-5`),
