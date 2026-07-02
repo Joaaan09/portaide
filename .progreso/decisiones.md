@@ -129,8 +129,60 @@
 
 ---
 
+### 2026-07-02 · Autenticación v1: usuario único por env + JWT en cookie httpOnly (elección del usuario)
+
+- **Decisión:** login por **email + contraseña de UN usuario**, definido en `.env` (`AUTH_EMAIL`,
+  `AUTH_PASSWORD`). La contraseña se **hashea con bcryptjs en memoria al arrancar** (nunca en claro en
+  logs ni al cliente). La sesión es un **JWT HS256** firmado con `SESSION_SECRET`, guardado en cookie
+  **httpOnly + Secure + SameSite=Lax** (exp ~30 días). `app.set('trust proxy', 1)` porque NPM termina
+  TLS. **Rate-limit + bloqueo** en `POST /api/auth/login`. Middleware `requireAuth` protege **todo**
+  `/api` salvo `/api/health` y `/api/auth/login`; el **upgrade de WebSocket valida la cookie** y cierra
+  la conexión si no hay sesión. Esto satisface la regla dura de CLAUDE.md §11 (nada de FS/pty/chat sin
+  sesión) antes de exponer nada.
+- **Motivo:** es una herramienta de un solo usuario; meter una colección `users` en Mongo para una
+  única credencial acoplaría el **borde de seguridad** a la DB sin ganancia y añade un modo de fallo
+  (Mongo caído = no login). Env es más simple, robusto y **testeable sin Mongo**. Mongo queda para
+  chat/ajustes. `bcryptjs` (JS puro) en vez de `argon2`/`bcrypt` nativo para no meter build nativo en
+  el borde de seguridad.
+- **Usuario sembrado:** `jcollvir@gmail.com` (pass en `.env`; **débil y compartida en claro por chat —
+  a cambiar cuanto antes**, anotado para el usuario).
+- **Futuro:** colección `users` en Mongo cuando haga falta multiusuario o 2FA/passkeys.
+
+---
+
+### 2026-07-02 · Workspace estilo VS Code: navegar todo el server + carpeta de trabajo activa
+
+- **Decisión:** la app navega el filesystem y fija una **carpeta de trabajo activa** (como "Open
+  Folder" de VS Code) que acota Files/Editor/Terminal/Chat (es el `cwd`). Raíz navegable y workspace
+  por defecto = **`/home/kuoyii/servers`** (todos los proyectos), configurable por env `FS_ROOT`.
+  Guard **anti path-traversal** relativo a `FS_ROOT` en toda la FS API.
+- **Límite real en Docker (importante):** el contenedor **solo ve lo montado**. v1 monta
+  `/home/kuoyii/servers` (+ `~/.claude` para la auth de claude). El "acceso a **todo** el servidor" que
+  pediste, de forma literal, requeriría montar más (`/home/kuoyii` o `/`) o correr el backend en el
+  host. Se deja `FS_ROOT` como env para **ampliarlo en una línea** (+ nota en el informe de cierre).
+
+---
+
+### 2026-07-02 · Puente del Chat: Agent SDK `@anthropic-ai/claude-agent-sdk` + `canUseTool` (aprobaciones reales)
+
+- **Decisión (elección del usuario: aprobaciones reales):** el chat usa **`@anthropic-ai/claude-agent-sdk`**
+  (`query()`), con **`canUseTool`** para **Approve/Reject reales** (pausa antes de cada Edit/Bash/Write
+  y espera la decisión del cliente vía WS), `includePartialMessages` para streaming → tarjetas de UI,
+  `resume` para continuidad del hilo, `setModel`/`setPermissionMode` para cambiar en caliente, y
+  `cwd` = workspace activo. Cierra el "detalles del puente / Agent SDK" que estaba pendiente.
+- **Terminal aparte:** pty real con el binario `claude`/`clauded` (ahí escribes el comando tú). El chat
+  estructurado va por SDK. Se cumplen ambas visiones (CLAUDE.md §4).
+- **Auth del engine:** el usuario está logueado por **suscripción** en `~/.claude` (no hay
+  `ANTHROPIC_API_KEY`). El CLI headless (`claude --print`) funciona con esa auth (verificado). El SDK
+  lanza el mismo engine, así que **debería heredarla** — validado empíricamente en esta sesión.
+- **Fallback si el SDK no autenticara:** puente por CLI (`claude --print --output-format stream-json
+  --input-format stream-json`) con gating vía `--permission-prompt-tool` + MCP propio (más trabajo).
+
+---
+
 ## Pendientes de decidir (no inventar; preguntar o resolver en implementación)
 
-- **Auth de un solo usuario**: mecanismo exacto (passphrase + token de sesión, cookie httpOnly, …) — §11.
-- **Detalles del puente `claude`** (ver entrada de arriba).
+- **Ampliar `FS_ROOT`** a todo el servidor (montar `/home/kuoyii` o `/`, o backend en el host) si el
+  acceso solo a `servers/` se queda corto — trade-off de seguridad, decidir al usarlo.
+- **2FA / passkeys** y colección `users` en Mongo: endurecer auth si el borde lo pide.
 - **Multi-VPS por SSH**: si algún día se retoma, definir aquí el modelo.
