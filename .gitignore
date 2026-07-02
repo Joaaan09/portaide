@@ -1,0 +1,25 @@
+# Dependencias
+node_modules/
+
+# Builds
+dist/
+build/
+
+# Entorno / secretos
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Logs
+*.log
+npm-debug.log*
+
+# Store local de sesiones/ajustes (v1, sin DB)
+data/
+*.sqlite
+*.sqlite3
+
+# Sistema
+.DS_Store

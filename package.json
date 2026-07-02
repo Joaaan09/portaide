@@ -1,0 +1,12 @@
+{
+  "name": "portaide",
+  "version": "0.0.0",
+  "private": true,
+  "description": "PortaIDE — IDE portátil, web y mobile-first para programar desde el móvil con Claude Code, sobre tu VPS.",
+  "scripts": {
+    "init": "bash scripts/init.sh"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}

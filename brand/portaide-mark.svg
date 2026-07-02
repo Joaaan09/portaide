@@ -1,0 +1,15 @@
+<svg viewBox="134 134 246 246" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="PortaIDE mark">
+  <defs>
+    <linearGradient id="cur" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#c491ff"></stop>
+      <stop offset="1" stop-color="#9d5cff"></stop>
+    </linearGradient>
+  </defs>
+  <g fill="#f4eeff">
+    <rect x="150" y="150" width="46" height="212" rx="13"></rect>
+    <rect x="150" y="150" width="150" height="46" rx="13"></rect>
+    <rect x="254" y="150" width="46" height="132" rx="13"></rect>
+    <rect x="150" y="236" width="150" height="46" rx="13"></rect>
+  </g>
+  <rect x="322" y="196" width="42" height="86" rx="11" fill="url(#cur)"></rect>
+</svg>

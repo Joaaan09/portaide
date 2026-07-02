@@ -1,0 +1,24 @@
+<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="PortaIDE">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="16%" r="88%">
+      <stop offset="0" stop-color="#241839"></stop>
+      <stop offset="52%" stop-color="#0f0b16"></stop>
+      <stop offset="100%" stop-color="#0a0810"></stop>
+    </radialGradient>
+    <linearGradient id="cur" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#c491ff"></stop>
+      <stop offset="1" stop-color="#9d5cff"></stop>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="114" fill="url(#bg)"></rect>
+  <rect x="1.75" y="1.75" width="508.5" height="508.5" rx="112.25" fill="none" stroke="#3a2b52" stroke-width="3.5"></rect>
+  <g transform="translate(256 256) scale(1.3) translate(-256 -256)">
+    <g fill="#f4eeff">
+      <rect x="150" y="150" width="46" height="212" rx="13"></rect>
+      <rect x="150" y="150" width="150" height="46" rx="13"></rect>
+      <rect x="254" y="150" width="46" height="132" rx="13"></rect>
+      <rect x="150" y="236" width="150" height="46" rx="13"></rect>
+    </g>
+    <rect x="322" y="196" width="42" height="86" rx="11" fill="url(#cur)"></rect>
+  </g>
+</svg>
