@@ -58,12 +58,26 @@
   overflow: hidden;
 }
 
+/* Divisor de 1px entre filas de una misma card (DESIGN.md §10), sea cual sea
+   su tipo (inline, stacked o la fila de acción). */
+.card > *:not(:first-child) {
+  border-top: 1px solid var(--border);
+}
+
 .row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   min-height: 48px;
+  padding: 12px 14px;
+}
+
+/* Fila apilada: label arriba, control a lo ancho (p.ej. swatches de tema) */
+.rowStacked {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   padding: 12px 14px;
 }
 
@@ -83,7 +97,6 @@
 
 .rowAction {
   padding: 12px 14px;
-  border-top: 1px solid var(--border);
 }
 
 /* Botón secundario "Log out": surface2 + borde, texto --red (cierra sesión) */
@@ -113,16 +126,192 @@
   outline-offset: 2px;
 }
 
-.note {
-  margin: 0;
-  max-width: 44ch;
-  font-size: 13px;
-  line-height: 19px;
+/* ---------- Appearance · swatches de tema (DESIGN.md §10) ---------- */
+
+.swatches {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  width: 100%;
+}
+
+.swatch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+  min-height: 44px;
+  padding: 13px 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface2);
+  color: var(--dim);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.16s ease-out;
+}
+
+/* Punto de muestra = acento de cada tema (tokens siempre disponibles) */
+.swatchDot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+}
+
+.swatch[data-theme-id='midnight'] .swatchDot {
+  background: var(--accent-midnight);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--accent-midnight) 45%, transparent);
+}
+
+.swatch[data-theme-id='lavender'] .swatchDot {
+  background: var(--accent-lavender);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--accent-lavender) 45%, transparent);
+}
+
+.swatch[data-theme-id='magenta'] .swatchDot {
+  background: var(--accent-magenta);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--accent-magenta) 45%, transparent);
+}
+
+.swatchLabel {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
   color: var(--dim);
 }
 
+/* Activo: anillo + glow de acento del tema activo (DESIGN.md §10) */
+.swatchActive {
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 1px var(--accent),
+    0 0 14px var(--glow);
+}
+
+.swatchActive .swatchLabel {
+  color: var(--text);
+}
+
+.swatch:active {
+  transform: scale(0.98);
+}
+
+.swatch:focus-visible {
+  outline: 2px solid var(--accent2);
+  outline-offset: 2px;
+}
+
+/* ---------- Appearance · stepper de tamaño de fuente (DESIGN.md §10) ---------- */
+
+.stepper {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.stepperBtn {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  min-height: 40px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 0.15s ease;
+}
+
+.stepperBtn:not(:disabled):active {
+  background: var(--surface2);
+}
+
+.stepperBtn:disabled {
+  color: var(--faint);
+  cursor: not-allowed;
+}
+
+.stepperBtn:focus-visible {
+  outline: 2px solid var(--accent2);
+  outline-offset: -2px;
+}
+
+.stepperValue {
+  min-width: 46px;
+  text-align: center;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- System · estados ---------- */
+
+/* Estado de conexión de Mongo (DESIGN.md §3: --green OK / --red error) */
+.stateOk {
+  color: var(--green);
+}
+
+.stateBad {
+  color: var(--red);
+}
+
+/* Skeleton de carga: barra sutil que pulsa (respeta reduced-motion) */
+.skeletonBar {
+  display: inline-block;
+  width: 92px;
+  height: 12px;
+  border-radius: 6px;
+  background: var(--surface2);
+  animation: settingsPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes settingsPulse {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.systemError {
+  margin: 0;
+  padding: 14px;
+  font-size: 13px;
+  color: var(--dim);
+}
+
+/* ---------- Pie con la marca (DESIGN.md §10, sin fachada de updates) ---------- */
+
+.footer {
+  margin: 6px 0 2px;
+  text-align: center;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.4px;
+  color: var(--faint);
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .logout:active {
+  .logout:active,
+  .swatch:active {
     transform: none;
+  }
+
+  .skeletonBar {
+    animation: none;
   }
 }

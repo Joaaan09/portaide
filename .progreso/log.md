@@ -4,6 +4,13 @@
 
 ---
 
+2026-07-02 (3ª sesión · iteración post-deploy) — Feedback del usuario en móvil: **arreglado el auto-zoom
+de iOS** al escribir (viewport `maximum-scale=1, user-scalable=no`); **mejorados los controles del composer
+del Chat**: selector de modelo con versión + **Fable 5** (verificado que el CLI acepta `--model claude-fable-5`),
+modo **Plan** (paridad con Claude Code: Ask/Plan/Auto-edits/Bypass), y **slider de esfuerzo**
+(Auto/Low/Medium/High/xHigh/Max → `options.effort` del SDK, por-mensaje). Panel colapsable en el pie para
+no cargar el móvil; persistencia en localStorage. Redeploy de frontend+backend, verde.
+
 2026-07-02 (3ª sesión) — **Fase 3 implementada y DESPLEGADA (app funcional, no mock).** Decisiones del
 usuario: auth por contraseña+cookie, chat con Approve/Reject reales, workspace estilo VS Code (acceso al
 server con selector de carpeta). Validado empíricamente que el CLI headless y el **Agent SDK** autentican

@@ -370,6 +370,15 @@
   color: var(--accent);
 }
 
+/* Nota del modo Ultracode (tope superior del slider): sobria, mono --faint */
+.effortNote {
+  margin: 2px 0 0;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9.5px;
+  line-height: 1.4;
+  color: var(--faint);
+}
+
 /* ---------- Slider de esfuerzo (Auto · Low · … · Max) ---------- */
 
 /* 44px de zona táctil vertical; el track visible es fino y centrado */

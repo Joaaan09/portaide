@@ -58,6 +58,7 @@ interface ClientMessage {
   model?: unknown;
   mode?: unknown;
   effort?: unknown;
+  workflows?: unknown;
 }
 
 export function handleChatConnection(
@@ -96,6 +97,9 @@ export function handleChatConnection(
         // effort viaja por-mensaje (no es estado de conexión): se lee aquí y se
         // pasa al turno. Ausente o 'auto' → undefined (default del engine).
         const effort = safeEffort(msg.effort);
+        // workflows (modo "Ultracode"): activa la herramienta de workflows
+        // multiagente del SDK para este turno. Ortogonal al effort.
+        const enableWorkflows = msg.workflows === true;
         turn = runChatTurn({
           ws,
           cwd,
@@ -104,6 +108,7 @@ export function handleChatConnection(
           model: currentModel,
           permissionMode: currentMode,
           effort,
+          enableWorkflows,
           onSession: () => {
             /* el cliente guarda el sessionId; aquí no hace falta retenerlo */
           },

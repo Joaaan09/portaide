@@ -13,16 +13,38 @@
   animation: islandScrim 0.18s ease;
 }
 
-/* Contenedor fijo abajo-centro; solo la píldora/las pestañas reciben eventos */
+/* Contenedor fijo; solo la píldora/las pestañas reciben eventos.
+   La posición real (abajo-centro por defecto o donde la arrastre el usuario) se
+   aplica por `transform` inline desde el componente, centrando la caja en un punto
+   con translate(-50%, -50%). Ver NavIsland.tsx. */
 .island {
   position: fixed;
   left: 0;
-  right: 0;
-  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  top: 0;
   z-index: 40;
   display: flex;
-  justify-content: center;
   pointer-events: none;
+}
+
+/* Durante el arrastre: promocionar a capa propia para un seguimiento fluido */
+.islandDragging {
+  will-change: transform;
+}
+
+/* Sonda invisible: expone env(safe-area-inset-*) como padding legible por JS
+   para clampear el arrastre dentro del área segura (notch / barra inferior). */
+.safeProbe {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  visibility: hidden;
+  pointer-events: none;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
 }
 
 /* ---------- Cerrada: píldora ---------- */
@@ -46,12 +68,26 @@
     0 0 22px var(--glow);
   color: var(--text);
   font-family: inherit;
-  cursor: pointer;
+  /* Arrastrable: evita que el navegador haga scroll/zoom con el gesto sobre la
+     píldora y que se seleccione texto al mover el dedo. */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: grab;
   transition: transform 0.16s ease-out;
 }
 
 .pill:active {
   transform: scale(0.97);
+}
+
+/* Mientras se arrastra (desktop): cursor de agarre y sin el hundido del :active */
+.pillDragging {
+  cursor: grabbing;
+}
+
+.pillDragging:active {
+  transform: none;
 }
 
 .pillIcon {

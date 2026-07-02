@@ -1,0 +1,65 @@
+/* Pull-to-refresh (portado del gesto de total-grind).
+   Solo tokens del sistema; superficie plana + borde 1px (DESIGN.md §4). */
+
+/* Wrapper transparente: no altera el layout (AppShell define su propia altura). */
+.wrapper {
+  position: relative;
+}
+
+/* Píldora flotante que baja desde el borde superior al tirar. Reserva el
+   safe-area de la PWA para no quedar bajo el notch/barra de estado. */
+.indicator {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 6px);
+  left: 50%;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  pointer-events: none;
+  transform: translate(-50%, 0);
+  transition:
+    transform 0.3s cubic-bezier(0.23, 1, 0.32, 1),
+    opacity 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+/* Mientras el dedo arrastra, la píldora sigue al dedo sin transición. */
+.dragging {
+  transition: none;
+}
+
+/* Spinner en anillo (mismo patrón que Splash/Login, DESIGN.md §15). */
+.spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+}
+
+/* Al soltar pasado el umbral: gira hasta la recarga. */
+.spinning {
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Menos movimiento: sin rebote ni giro, solo un fundido sobrio (DESIGN.md §11). */
+@media (prefers-reduced-motion: reduce) {
+  .indicator {
+    transition: opacity 0.2s ease;
+  }
+
+  .spinning {
+    animation: none;
+  }
+}

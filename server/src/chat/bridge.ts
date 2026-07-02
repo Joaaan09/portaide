@@ -50,6 +50,12 @@ export interface RunTurnParams {
   permissionMode: ChatPermissionMode;
   /** Nivel de esfuerzo (undefined = default del engine; el engine lo ignora si el modelo no lo soporta). */
   effort?: ChatEffort;
+  /**
+   * Activa la herramienta de workflows multiagente del SDK (modo "Ultracode").
+   * Se aplica vía `options.settings.enableWorkflows` (el campo lo declara el tipo
+   * `Settings` del SDK, no `Options` directamente). Ortogonal al effort.
+   */
+  enableWorkflows?: boolean;
   /** Se llama con el session_id del init (para reanudar el próximo turno). */
   onSession: (sessionId: string) => void;
   /** Se llama al cerrar el turno (result/error/interrupt) para liberar el slot. */
@@ -112,7 +118,8 @@ function flattenContent(content: unknown): string {
  * `onDone`.
  */
 export function runChatTurn(params: RunTurnParams): ChatTurn {
-  const { ws, cwd, userText, resumeSessionId, model, permissionMode, effort } = params;
+  const { ws, cwd, userText, resumeSessionId, model, permissionMode, effort, enableWorkflows } =
+    params;
 
   const send = (msg: OutMsg): void => {
     if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
@@ -175,6 +182,10 @@ export function runChatTurn(params: RunTurnParams): ChatTurn {
     ...(model ? { model } : {}),
     // Si el modelo no soporta effort, el engine lo ignora (downgrade silencioso).
     ...(effort ? { effort } : {}),
+    // "Ultracode": habilita los workflows multiagente. El campo vive en el tipo
+    // `Settings` del SDK (no en `Options`), así que va por `options.settings`,
+    // que carga solo esta clave en la capa de mayor prioridad (no pisa el resto).
+    ...(enableWorkflows ? { settings: { enableWorkflows: true } } : {}),
     // bypassPermissions exige este flag explícito en el SDK.
     ...(permissionMode === 'bypassPermissions'
       ? { allowDangerouslySkipPermissions: true }

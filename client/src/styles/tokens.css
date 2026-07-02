@@ -66,6 +66,15 @@
   --orange: #ff8f6b;
 }
 
+/* ---------- Muestras de acento por tema ----------
+   Siempre disponibles (no dependen del tema activo) para que los swatches
+   de Settings → Appearance previsualicen el acento de cada tema (DESIGN §10). */
+:root {
+  --accent-midnight: #a970ff;
+  --accent-lavender: #b6a0ff;
+  --accent-magenta: #c264ff;
+}
+
 /* ============================================================
    Reset mínimo + estilos base
    ============================================================ */

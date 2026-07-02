@@ -8,8 +8,13 @@ export type ChatPermissionMode = 'default' | 'plan' | 'acceptEdits' | 'bypassPer
 /** Niveles de esfuerzo del engine (SDK `options.effort`). */
 export type ChatEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 
-/** Ajuste de esfuerzo del composer: un nivel o 'auto' (= no enviar, default del engine). */
-export type ChatEffortSetting = ChatEffort | 'auto'
+/**
+ * Ajuste de esfuerzo del composer: un nivel, 'auto' (= no enviar, default del
+ * engine) o 'ultracode'. 'ultracode' NO es un nivel de effort: es un tope
+ * superior del slider que activa los workflows multiagente del SDK
+ * (`settings.enableWorkflows`) y, además, fija el effort en 'max'.
+ */
+export type ChatEffortSetting = ChatEffort | 'auto' | 'ultracode'
 
 /** Línea de un diff dentro de una tool-card Edit (colores en DESIGN.md §3) */
 export interface DiffLine {

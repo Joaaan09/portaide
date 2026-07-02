@@ -29,7 +29,11 @@ export const MODEL_OPTIONS: { value: string; label: string }[] = [
   { value: 'haiku', label: 'Haiku 4.5' },
 ]
 
-/** Topes del slider de esfuerzo. 'auto' = no enviar effort (default del engine). */
+/**
+ * Topes del slider de esfuerzo. 'auto' = no enviar effort (default del engine).
+ * 'ultracode' es el tope superior (tras Max): no es un nivel de effort, activa
+ * los workflows multiagente del SDK y manda effort 'max' (ver `sendMessage`).
+ */
 export const EFFORT_STEPS: { value: ChatEffortSetting; label: string }[] = [
   { value: 'auto', label: 'Auto' },
   { value: 'low', label: 'Low' },
@@ -37,6 +41,7 @@ export const EFFORT_STEPS: { value: ChatEffortSetting; label: string }[] = [
   { value: 'high', label: 'High' },
   { value: 'xhigh', label: 'Extra High' },
   { value: 'max', label: 'Max' },
+  { value: 'ultracode', label: 'Ultracode' },
 ]
 
 export type ConnStatus = 'connecting' | 'open' | 'closed'
@@ -536,6 +541,45 @@ class ChatStore {
       })
   }
 
+  closeSession = (id: string): void => {
+    const { sessions } = this.state
+    const idx = sessions.findIndex((s) => s.id === id)
+    if (idx === -1) return
+
+    // Best-effort: borra la meta en el server; se ignora el fallo (404 si nunca
+    // se persistió, o red/Mongo caídos). La pestaña se cierra en local igual.
+    fetch(`/api/chat/sessions/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    }).catch(() => {
+      /* sin persistencia: la pestaña vive solo en memoria, cerrarla basta */
+    })
+
+    // Si esta pestaña tenía el turno en curso, se interrumpe y se limpia su
+    // estado transitorio (los eventos tardíos se descartan: pendingLocalId=null).
+    if (this.pendingLocalId === id) {
+      this.interrupt()
+      this.pendingLocalId = null
+    }
+    this.turns.delete(id)
+
+    let next = sessions.filter((s) => s.id !== id)
+    let activeId = this.state.activeId
+
+    // Nunca dejar la vista sin pestañas: si era la última, abrimos una vacía.
+    if (next.length === 0) {
+      const fresh = this.newLocalSession()
+      next = [fresh]
+      activeId = fresh.id
+    } else if (activeId === id) {
+      // Si cerramos la activa, activamos un vecino (anterior o siguiente).
+      const neighbor = next[Math.min(idx, next.length - 1)]!
+      activeId = neighbor.id
+    }
+
+    this.setState({ sessions: next, activeId })
+  }
+
   sendMessage = (text: string, cwd: string | null): void => {
     const trimmed = text.trim()
     if (!trimmed) return
@@ -553,13 +597,23 @@ class ChatStore {
     const name = session.items.length === 0 ? snippet(trimmed) : session.name
     this.updateSession(localId, (s) => ({ ...s, name, streaming: true, items: [...s.items, userItem, assistantItem] }))
 
+    // Payload de esfuerzo por-mensaje:
+    // - 'ultracode' → activa workflows multiagente (workflows:true) + effort 'max'.
+    // - cualquier otro nivel → effort normal.
+    // - 'auto' → nada (usa el default del engine).
+    const effortPayload =
+      this.state.effort === 'ultracode'
+        ? { workflows: true, effort: 'max' as const }
+        : this.state.effort !== 'auto'
+          ? { effort: this.state.effort }
+          : {}
+
     this.raw({
       type: 'user_message',
       text: trimmed,
       ...(cwd ? { cwd } : {}),
       ...(session.claudeSessionId ? { sessionId: session.claudeSessionId } : {}),
-      // effort viaja por-mensaje; se omite en 'auto' (usa el default del engine).
-      ...(this.state.effort !== 'auto' ? { effort: this.state.effort } : {}),
+      ...effortPayload,
     })
   }
 

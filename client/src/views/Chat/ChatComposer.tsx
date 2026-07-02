@@ -211,6 +211,10 @@ export default function ChatComposer({
                 aria-label="Nivel de esfuerzo"
                 aria-valuetext={effortLabel}
               />
+              {/* Ultracode: tope superior del slider; nota sobria del modo activo */}
+              {effort === 'ultracode' && (
+                <p className={styles.effortNote}>modo exhaustivo · multiagente · consume más</p>
+              )}
             </div>
           </div>
         )}

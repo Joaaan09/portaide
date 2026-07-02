@@ -25,6 +25,8 @@ export interface ChatApi {
   effortOptions: { value: ChatEffortSetting; label: string }[]
   selectSession: (id: string) => void
   addSession: () => void
+  /** Cierra una pestaña: borra la sesión (best-effort) y reactiva un vecino. */
+  closeSession: (id: string) => void
   /** Envía un mensaje del usuario en la conversación activa (con el cwd del workspace). */
   sendMessage: (text: string, cwd: string | null) => void
   /** Approve/Reject real de una tool pendiente (manda permission_decision). */
@@ -55,6 +57,7 @@ export function useChatSession(): ChatApi {
     effortOptions: EFFORT_STEPS,
     selectSession: chatStore.selectSession,
     addSession: chatStore.addSession,
+    closeSession: chatStore.closeSession,
     sendMessage: chatStore.sendMessage,
     decide: chatStore.decide,
     setModel: chatStore.setModel,

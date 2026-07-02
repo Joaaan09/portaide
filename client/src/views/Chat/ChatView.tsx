@@ -23,6 +23,7 @@ export default function ChatView() {
         activeId={chat.activeId}
         onSelect={chat.selectSession}
         onAdd={chat.addSession}
+        onClose={chat.closeSession}
       />
       <ChatThread session={chat.activeSession} onDecide={chat.decide} />
       <ChatComposer

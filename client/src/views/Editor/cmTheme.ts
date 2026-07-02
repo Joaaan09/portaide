@@ -55,7 +55,13 @@ function makeEditorTheme(k: Tokens): Extension {
   return EditorView.theme(
     {
       '&': { color: k.text, backgroundColor: k.bg, height: '100%' },
-      '.cm-scroller': { fontFamily: MONO, fontSize: '13px', lineHeight: '20px' },
+      // Tamaño de fuente cableado a --editor-font-size (Settings → Appearance,
+      // AppearanceProvider lo fija en <html>). line-height escala con él (+6px).
+      '.cm-scroller': {
+        fontFamily: MONO,
+        fontSize: 'var(--editor-font-size, 14px)',
+        lineHeight: 'calc(var(--editor-font-size, 14px) + 6px)',
+      },
       // Cursor en acento (caret nativo → respeta reduced-motion del SO, DESIGN §11).
       '.cm-content': { caretColor: k.accent, padding: '8px 0' },
       '&.cm-focused': { outline: 'none' },

@@ -251,6 +251,25 @@ Reglas: transiciones cortas (≤ ~220ms), `ease`/spring suaves, sin animar layou
 - Instalable (`manifest.webmanifest` ya en `brand/`): standalone, vertical, `theme_color`/`background_color`
   `#0a0810`. Iconos en `brand/` (192/512/1024 maskable, apple-touch, favicons).
 - Pega `brand/head-snippet.html` en el `<head>`. Marco app-shell (§5) para evitar barras flotantes en iOS.
+- **Viewport**: `viewport-fit=cover` + `maximum-scale=1, user-scalable=no` para dar sensación de app y
+  evitar el auto-zoom de iOS al enfocar inputs (<16px). El `<main>` de cada vista reserva
+  `env(safe-area-inset-top)` (notch) y la isla el `-bottom`.
+- **Pull-to-refresh**: en standalone, tirar hacia abajo cuando el scroll de la vista activa está arriba
+  del todo recarga la app (indicador sobrio con `spin`). No se activa en pestaña de navegador (ya trae el
+  nativo). Solo alrededor del shell; la isla de nav queda fuera del gesto.
+
+## 13b. Isla de navegación arrastrable (§5) — comportamiento
+
+- La píldora es **reposicionable**: se arrastra con Pointer Events a cualquier punto y **recuerda la
+  posición** (`localStorage: portaide:island:pos`). Se distingue **tap** (abre) de **arrastre** (mueve)
+  por umbral (~8px). Clamp dentro del viewport respetando `env(safe-area-inset-*)`; re-clamp en
+  resize/orientación y al abrir/cerrar. `touch-action: none` en la píldora.
+
+## 13c. Chat — control de esfuerzo con "Ultracode" (§6)
+
+- El slider de esfuerzo del composer añade un tope superior **"Ultracode"** (tras Max). No es un nivel de
+  effort: activa los **workflows multiagente** del SDK (`options.settings.enableWorkflows`) y manda
+  `effort: 'max'`. Lleva un aviso mono `--faint` de que consume más. Persiste como el resto de controles.
 
 ## 14. Checklist final de UI (repásalo antes de cerrar un PR de UI)
 

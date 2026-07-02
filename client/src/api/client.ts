@@ -107,3 +107,15 @@ export const renamePath = (from: string, to: string): Promise<{ ok: boolean }> =
 
 export const deletePath = (path: string): Promise<{ ok: boolean }> =>
   api.del<{ ok: boolean }>(`/fs/delete?path=${q(path)}`)
+
+// --- System API (server/src/system) ---------------------------------------
+// Estado real del backend para el panel System de Settings.
+
+export interface SystemInfo {
+  backend: { uptimeSeconds: number; node: string }
+  claude: { version: string | null }
+  workspace: { fsRoot: string }
+  mongo: { connected: boolean }
+}
+
+export const getSystemInfo = (): Promise<SystemInfo> => api.get<SystemInfo>('/system')
