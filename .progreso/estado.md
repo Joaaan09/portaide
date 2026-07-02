@@ -2,7 +2,7 @@
 
 > Léeme al empezar. Actualízame al terminar cada sesión.
 
-**Última actualización:** 2026-07-02 (3ª sesión)
+**Última actualización:** 2026-07-02 (4ª sesión)
 
 ## Dónde estamos
 
@@ -52,6 +52,16 @@ Hecho en esta sesión (commits `ffbe7a4`…`76306ff` + deploy):
 - Editor: split-terminal aplazado a v2; undo se reinicia al cambiar de pestaña.
 - FS: `resolveSafe` no resuelve symlinks (aceptable v1, un solo usuario).
 - `DELETE /api/chat/sessions/:id` existe pero sin botón en la UI.
+
+## Settings v1 (4ª sesión)
+
+Vista Settings completada y **desplegada** (implementada por trabajo paralelo de otra sesión): Account +
+Appearance (tema con swatches + tamaño de fuente cableado a CodeMirror) + System (`/api/system` real).
+En esta sesión afiné **3 fixes sobre lo desplegado** (swatch de tema con fondo por tema §10, foco del
+stepper en los límites, default de fuente con localStorage vacío) y puse **DESIGN §10 + decisiones.md** al
+día (System sustituye a VPS Connection; Claude Code sigue en el composer del Chat). Typecheck verde.
+**PENDIENTE del usuario: desplegar estos fixes** (`docker compose up -d --build`) cuando quiera.
+⚠️ Hubo **dos sesiones sobre el mismo checkout pisándose** — coordinar antes de paralelizar de nuevo.
 
 ## Siguiente
 

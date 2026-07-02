@@ -23,11 +23,13 @@ function clamp(size: number): number {
   return Math.min(EDITOR_FONT_MAX, Math.max(EDITOR_FONT_MIN, Math.round(size)))
 }
 
-/** Lee el tamaño persistido; si no hay (o el storage falla), cae al default. */
+/** Lee el tamaño persistido; si no hay valor útil (ausente, vacío o no numérico)
+    o el storage falla, cae al default. Ojo: Number('') === 0, así que hay que
+    descartar la cadena vacía antes de parsear para no clampar a MIN. */
 function readStoredFontSize(): number {
   try {
     const stored = window.localStorage.getItem(STORAGE_KEY)
-    const parsed = stored != null ? Number(stored) : NaN
+    const parsed = stored != null && stored.trim() !== '' ? Number(stored) : NaN
     return Number.isFinite(parsed) ? clamp(parsed) : DEFAULT_FONT_SIZE
   } catch {
     return DEFAULT_FONT_SIZE

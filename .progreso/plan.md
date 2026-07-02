@@ -29,7 +29,10 @@
 - [ ] Vista Files (explorer + git status + estado de conexión)
 - [ ] Vista Editor (pestañas, breadcrumb, syntax highlighting, diffs, split terminal, barra de símbolos)
 - [ ] Vista Terminal (pestañas, salida coloreada, teclas especiales)
-- [ ] Vista Settings (VPS connection, Claude Code, appearance)
+- [x] Vista Settings v1 — **Appearance** (tema con swatches + tamaño de fuente cableado a CodeMirror) +
+      **System** (datos reales vía `/api/system`) + Account. *VPS Connection* descartado (v1 sin SSH) y
+      *Claude Code* diferido al composer del Chat (ver decisiones.md · 2026-07-02). Desplegado; swatch
+      §10 y a11y del stepper afinados en la 4ª sesión.
 
 ## Fase 3 — Backend / integración real  ✅ DESPLEGADA (2026-07-02)
 

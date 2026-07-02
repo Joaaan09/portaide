@@ -4,6 +4,18 @@
 
 ---
 
+2026-07-02 (4ª sesión · fixes sobre Settings desplegado) — Encargo de ampliar Settings (que "no dejaba
+cambiar nada"). Trabajé en paralelo con **otra sesión sobre el mismo working tree** que ya había
+implementado+commiteado+desplegado la misma vista (Account + Appearance + System `/api/system`);
+convergimos casi idénticos (mismo mockup + DESIGN.md → mismo naming/estructura), de ahí el "corte" (los
+ejecutores se pisaban en disco). Tras revisión, destilé lo que la versión desplegada NO tenía: **(1)** el
+swatch de tema ahora previsualiza el **FONDO** de cada tema (tokens `--bg-{theme}`), no solo el acento
+—cumplía a medias DESIGN §10 (regla dura)—; **(2)** stepper de fuente con `aria-disabled` en vez de
+`disabled` (no perder el foco de teclado en 11/20); **(3)** `readStoredFontSize` descarta la cadena vacía
+(default 14, no 11). Docs: **DESIGN §10 reescrito** a la realidad v1 (System en vez de VPS/SSH; Claude
+Code diferido al composer del Chat) + entrada en decisiones.md. Typecheck verde; deploy pendiente del
+usuario. **Lección:** dos sesiones en el mismo checkout se pisan — coordinar antes de paralelizar.
+
 2026-07-02 (3ª sesión · lote UX móvil) — Sobre el desplegado, feedback del usuario → 3 subagentes en
 paralelo + Settings: **cerrar pestañas** (chat ✕ con DELETE best-effort; editor ya iba), **isla de
 navegación arrastrable** (Pointer Events, tap-vs-drag, posición persistida, clamp con safe-area),

@@ -144,7 +144,6 @@
   padding: 13px 8px;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: var(--surface2);
   color: var(--dim);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
@@ -154,11 +153,17 @@
     transform 0.16s ease-out;
 }
 
-/* Punto de muestra = acento de cada tema (tokens siempre disponibles) */
+/* Cada swatch previsualiza el FONDO propio de su tema (DESIGN.md §10);
+   el punto de muestra encima lleva el acento de ese mismo tema. Ambos usan
+   tokens --bg-{theme} / --accent-{theme} siempre disponibles en tokens.css. */
 .swatchDot {
   width: 22px;
   height: 22px;
   border-radius: 50%;
+}
+
+.swatch[data-theme-id='midnight'] {
+  background: var(--bg-midnight);
 }
 
 .swatch[data-theme-id='midnight'] .swatchDot {
@@ -166,9 +171,17 @@
   box-shadow: 0 0 10px color-mix(in srgb, var(--accent-midnight) 45%, transparent);
 }
 
+.swatch[data-theme-id='lavender'] {
+  background: var(--bg-lavender);
+}
+
 .swatch[data-theme-id='lavender'] .swatchDot {
   background: var(--accent-lavender);
   box-shadow: 0 0 10px color-mix(in srgb, var(--accent-lavender) 45%, transparent);
+}
+
+.swatch[data-theme-id='magenta'] {
+  background: var(--bg-magenta);
 }
 
 .swatch[data-theme-id='magenta'] .swatchDot {
@@ -232,13 +245,14 @@
   transition: background-color 0.15s ease;
 }
 
-.stepperBtn:not(:disabled):active {
+.stepperBtn:active {
   background: var(--surface2);
 }
 
-.stepperBtn:disabled {
+/* En el límite: atenuado (sin quitar del tab order; ver FontSizeStepper.tsx).
+   El clamp hace no-op, así que el botón sigue enfocable y "pulsable". */
+.stepperBtnLimit {
   color: var(--faint);
-  cursor: not-allowed;
 }
 
 .stepperBtn:focus-visible {

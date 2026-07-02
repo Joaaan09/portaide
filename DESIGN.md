@@ -214,13 +214,25 @@ Réplica de Claude Code en VS Code (ver [CLAUDE.md](CLAUDE.md) §4). Estructura:
 ## 10. Vista Settings
 
 Secciones tipo "lista agrupada" (card `--surface`, filas separadas por 1px `--border`), con eyebrow
-`--faint` mayúsculas:
+`--faint` mayúsculas.
 
-- **VPS Connection**: Host, User·Port, SSH Key (✓), Status (`● Connected · uptime` en `--green`).
-- **Claude Code**: Model (mono `--accent`), **Permission mode** = segmented `Ask / Plan / Auto` (activo
-  `--accent` texto `--on-accent`), **Auto-approve edits** = toggle (track `--accent` cuando ON, knob `--on-accent`).
+> **Estructura real v1 (2026-07-02).** Se desvía del mockup canónico por la arquitectura decidida
+> (v1 sin puente SSH; §2). Registrado aquí y en [.progreso/decisiones.md](.progreso/decisiones.md):
+> - El panel **"VPS Connection" del mock NO se implementa**: describe SSH remoto (host/puerto/key), que
+>   v1 no usa. Se sustituye por **"System"** con datos **reales** del backend local.
+> - El grupo **"Claude Code"** (Model / Permission mode / Auto-approve) **se difiere**: en v1 esos
+>   controles viven en el **composer del Chat** (cambio en caliente por WS), que es su fuente de verdad.
+>   Duplicarlos en Settings crearía dos estados. Reevaluar si se quiere un "default persistente".
+
+Grupos v1:
+
+- **Account**: email de la sesión (mono `--dim`) + botón **Log out**.
 - **Appearance**: **Theme** = 3 swatches (fondo del tema + puntito de acento; activo con borde de acento
-  + glow), **Editor font size** = stepper `− 14px +` (mono). Pie con versión en mono `--faint`.
+  + glow), **Editor font size** = stepper `− 14px +` (mono, rango 11–20, aplica a CodeMirror en vivo).
+- **System** (sustituye a VPS Connection): filas display en mono — Backend (uptime), Node, Claude CLI
+  (versión), Workspace (`fsRoot`), Mongo (`Connected`/`Disconnected` en `--green`/`--red`).
+- Pie con marca/versión en mono `--faint` (hoy solo `PortaIDE`: el `package.json` es `0.0.0`; añadir
+  versión cuando exista una real, sin acción "check updates" —no hay mecanismo de updates—).
 
 ## 11. Movimiento
 

@@ -13,13 +13,16 @@ export default function FontSizeStepper() {
   const atMin = editorFontSize <= EDITOR_FONT_MIN
   const atMax = editorFontSize >= EDITOR_FONT_MAX
 
+  // En los límites no deshabilitamos el botón (perdería el foco de teclado, que
+  // saltaría a <body>): lo marcamos aria-disabled + atenuado y dejamos que el
+  // clamp de AppearanceProvider haga no-op. Sigue en el tab order y enfocable.
   return (
     <div className={styles.stepper}>
       <button
         type="button"
-        className={styles.stepperBtn}
+        className={`${styles.stepperBtn} ${atMin ? styles.stepperBtnLimit : ''}`}
         onClick={() => setEditorFontSize(editorFontSize - 1)}
-        disabled={atMin}
+        aria-disabled={atMin || undefined}
         aria-label="Decrease editor font size"
       >
         −
@@ -29,9 +32,9 @@ export default function FontSizeStepper() {
       </span>
       <button
         type="button"
-        className={styles.stepperBtn}
+        className={`${styles.stepperBtn} ${atMax ? styles.stepperBtnLimit : ''}`}
         onClick={() => setEditorFontSize(editorFontSize + 1)}
-        disabled={atMax}
+        aria-disabled={atMax || undefined}
         aria-label="Increase editor font size"
       >
         +

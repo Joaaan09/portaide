@@ -66,10 +66,14 @@
   --orange: #ff8f6b;
 }
 
-/* ---------- Muestras de acento por tema ----------
+/* ---------- Muestras de fondo + acento por tema ----------
    Siempre disponibles (no dependen del tema activo) para que los swatches
-   de Settings → Appearance previsualicen el acento de cada tema (DESIGN §10). */
+   de Settings → Appearance previsualicen el fondo y el acento de cada tema
+   (DESIGN §10). Los valores --bg-* replican el --bg de cada bloque de tema. */
 :root {
+  --bg-midnight: #0a0a0f;
+  --bg-lavender: #14141a;
+  --bg-magenta: #09060f;
   --accent-midnight: #a970ff;
   --accent-lavender: #b6a0ff;
   --accent-magenta: #c264ff;

@@ -198,6 +198,29 @@
 
 ---
 
+### 2026-07-02 · Settings v1 — qué se implementa y qué se desvía del mockup
+
+Al ampliar Settings (antes casi un stub: solo "Account") se decidió, con el usuario:
+
+- **"VPS Connection" del mock → NO se implementa; se sustituye por "System".** El panel del mock
+  (host `91.107.204.12`, `deploy · 22`, `id_ed25519`) describe **SSH remoto**, arquitectura que v1
+  **no** usa (backend en el propio VPS, §2 de CLAUDE.md). Pintarlo sería fachada que miente sobre la
+  arquitectura. En su lugar, **"System"** con datos **reales** vía `GET /api/system` (autenticado):
+  uptime del backend, versión de Node, versión del CLI `claude`, `fsRoot` del workspace y estado de Mongo.
+- **Grupo "Claude Code" (Model / Permission mode / Auto-approve) → diferido, NO en Settings v1.** Esos
+  controles ya viven en el **composer del Chat** (cambio en caliente por WS, su fuente de verdad).
+  Meterlos también en Settings crearía dos estados a sincronizar. Queda como posible mejora futura
+  ("defaults persistentes" en localStorage que sirvan de valor inicial al chat) si se pide.
+- **Sí implementado y funcional:** **Appearance** → *Theme* (3 swatches cableados a `ThemeProvider.setTheme`;
+  la infra de tema ya existía, solo faltaba el control) y *Editor font size* (stepper 11–20, nuevo
+  `AppearanceProvider` con patrón hermano del `ThemeProvider`: persiste `portaide:editorFontSize` y
+  aplica la CSS var `--editor-font-size`, que consume el CodeMirror en vivo).
+- **Tokens de preview de tema:** los swatches necesitan mostrar el fondo/acento de **cada** tema a la vez,
+  pero los tokens `--bg`/`--accent` solo existen bajo el `data-theme` activo. Por eso se añadieron tokens
+  **fijos** `--bg-{theme}` y `--accent-{theme}` en `tokens.css` (mismos valores que cada bloque de tema).
+
+---
+
 ## Pendientes de decidir (no inventar; preguntar o resolver en implementación)
 
 - **Ampliar `FS_ROOT`** a todo el servidor (montar `/home/kuoyii` o `/`, o backend en el host) si el
