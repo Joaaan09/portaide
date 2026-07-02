@@ -28,6 +28,13 @@ services:
       - NODE_ENV=production
       - PORT=4100
       - MONGODB_URI=mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongo:27017/portaide?authSource=admin
+      # Borde de seguridad (CLAUDE.md §11): firma de sesión + credencial del usuario único.
+      - SESSION_SECRET=${SESSION_SECRET}
+      - AUTH_EMAIL=${AUTH_EMAIL}
+      - AUTH_PASSWORD=${AUTH_PASSWORD}
+      # Raíz del filesystem que ve la app (workspace por defecto). Ampliable, pero
+      # solo se puede navegar lo que esté montado abajo.
+      - FS_ROOT=/home/kuoyii/servers
     # Montajes del host que necesita PortaIDE — se validan en Fase 3 al desplegar:
     # el backend toca el FS real de los proyectos y usa la config/credenciales de
     # Claude Code del host (mismo path dentro y fuera para que las rutas coincidan).
