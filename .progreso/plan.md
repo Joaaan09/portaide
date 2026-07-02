@@ -8,16 +8,21 @@
 - [x] `CLAUDE.md` adaptado a PortaIDE
 - [x] `DESIGN.md` extraído del mockup canónico (3 temas, tokens, 5 vistas, motion)
 - [x] `git init` (sin commit todavía)
-- [ ] Confirmar el **stack concreto** (CodeMirror 6 vs Monaco, xterm.js, ws, node-pty, store de sesión/ajustes)
-- [ ] Scaffolding del monorepo `client/` + `server/` + raíz con `concurrently`
-- [ ] Commit inicial + crear rama `staging`
+- [x] Confirmar el **stack concreto** (2026-07-02: MERN confirmado por el usuario — Mongo entra en v1;
+      CodeMirror 6, xterm.js, ws, node-pty, mongoose, CSS Modules sin Tailwind; ver decisiones.md)
+- [x] Scaffolding del monorepo `client/` + `server/` + raíz con `concurrently` (+ capa Docker completa:
+      compose patrón SmartPeak, Dockerfiles multi-stage, nginx con proxy /api y /ws)
+- [x] Commit inicial + crear rama `staging`
 
 ## Fase 1 — Bloquear el sistema de diseño (antes de features)
 
-- [ ] Tokens CSS de los 3 temas (Midnight/Lavender/Magenta) + fuentes (IBM Plex Sans + JetBrains Mono)
-- [ ] Shell móvil: marco app-shell + **isla dinámica** de navegación (5 destinos)
-- [ ] **Vista Chat** (la estrella): burbujas, thinking, tool-cards (Read/Edit+diff+approve/Bash), input
-- [ ] Iterar sobre shell + Chat hasta clavar el tono (validar contra el mockup)
+- [x] Tokens CSS de los 3 temas (Midnight/Lavender/Magenta) + fuentes (IBM Plex Sans + JetBrains Mono)
+      (+ token `--on-accent` añadido a DESIGN.md §3)
+- [x] Shell móvil: marco app-shell + **isla dinámica** de navegación (5 destinos)
+- [x] **Vista Chat** (la estrella): burbujas, thinking, tool-cards (Read/Edit+diff+approve/Bash), input
+      (con datos mock calcados del mockup; el puente real llega en Fase 3)
+- [ ] Iterar sobre shell + Chat hasta clavar el tono (validar contra el mockup) — **pendiente de QA
+      visual en dispositivo por el usuario** (`npm run dev`; sin navegador disponible en el VPS)
 
 ## Fase 2 — Resto de vistas (contra el sistema bloqueado)
 

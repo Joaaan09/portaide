@@ -178,11 +178,13 @@ Desplegar subagentes **no siempre es necesario**. Si la tarea es sencilla, puede
 
 ## 10. Comandos
 
-> Aún **no hay stack montado** (esto es el arranque del proyecto). Cuando se scaffolde, esta sección
-> tendrá los comandos reales (`npm run dev`, etc.), como en el proyecto SmartPeak. De momento:
-
 ```bash
 bash scripts/init.sh        # arranque de sesión: muestra el estado actual del proyecto
+npm run install:all         # instalar dependencias (raíz + client + server)
+npm run dev                 # dev: client (Vite, :5173) + server (:4100) con concurrently
+npm run build               # build de ambos (tsc + vite build / tsc)
+npm run typecheck           # typecheck de ambos
+docker compose up -d --build  # despliegue en el VPS (requiere .env, ver .env.example)
 ```
 
 Entorno del VPS (verificado): **Node v20**, **npm 9**, **git 2.47**, **`claude` CLI 2.1.197**
