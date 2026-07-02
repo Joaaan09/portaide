@@ -9,8 +9,9 @@ import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 
-/** Timeout corto: `claude --version` es instantáneo; si se cuelga, degradamos a null. */
-const VERSION_TIMEOUT_MS = 2_000;
+/** Timeout: el CLI `claude` tarda ~4s en arrancar dentro del contenedor (es pesado);
+ *  damos margen. El resultado se cachea, así que este coste se paga una sola vez. */
+const VERSION_TIMEOUT_MS = 10_000;
 
 /** Cache del resultado exitoso (null = aún sin resolver o último intento fallido). */
 let cachedVersion: string | null = null;
