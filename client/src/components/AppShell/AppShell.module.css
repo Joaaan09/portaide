@@ -23,8 +23,10 @@
   z-index: 1;
 }
 
-/* Contenedor de la vista activa. El padding inferior reserva el hueco de la
-   isla de navegación (56px en el mockup) + safe-area de PWA iOS. */
+/* Contenedor de la vista activa. Reserva el safe-area SUPERIOR de la PWA (notch /
+   barra de estado del iPhone) para que las cabeceras de las vistas —con el `+` de
+   nuevo chat y el selector de pestañas— no queden bajo el notch e intocables. El
+   padding inferior reserva el hueco de la isla de navegación (56px) + safe-area. */
 .viewport {
   position: relative;
   z-index: 10;
@@ -32,6 +34,7 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
+  padding-top: env(safe-area-inset-top, 0px);
   padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px));
   animation: fadein 0.18s ease;
 }
