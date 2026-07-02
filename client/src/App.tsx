@@ -1,35 +1,18 @@
-// Placeholder mínimo para validar tokens y fuentes.
-// El shell móvil real (isla dinámica + 5 vistas) llega en la siguiente subtarea.
+// Raíz de la app: providers globales + shell + isla de navegación.
+// La isla va como hermana del shell (position: fixed) para no depender
+// del overflow:hidden del marco.
+import { ThemeProvider } from './theme/ThemeProvider'
+import { NavigationProvider } from './navigation/NavigationProvider'
+import AppShell from './components/AppShell/AppShell'
+import NavIsland from './components/NavIsland/NavIsland'
+
 export default function App() {
   return (
-    <main
-      style={{
-        minHeight: '100dvh',
-        display: 'grid',
-        placeItems: 'center',
-        textAlign: 'center',
-      }}
-    >
-      <div>
-        <h1
-          style={{
-            margin: 0,
-            fontSize: 28,
-            fontWeight: 700,
-            color: 'var(--accent)',
-          }}
-        >
-          PortaIDE
-        </h1>
-        <p style={{ margin: '8px 0 0', fontSize: 13.5, color: 'var(--dim)' }}>
-          Portable IDE — scaffolding listo
-        </p>
-        <code style={{ display: 'block', marginTop: 16, fontSize: 13, color: 'var(--green)' }}>
-          <span style={{ color: 'var(--faint)' }}>~/servers/portaide</span> ❯{' '}
-          <span style={{ color: 'var(--text)' }}>claude</span>{' '}
-          <span style={{ color: 'var(--accent)' }}>▮</span>
-        </code>
-      </div>
-    </main>
+    <ThemeProvider>
+      <NavigationProvider>
+        <AppShell />
+        <NavIsland />
+      </NavigationProvider>
+    </ThemeProvider>
   )
 }

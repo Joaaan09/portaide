@@ -1,0 +1,65 @@
+/* AppShell — marco app-shell (DESIGN.md §5) */
+
+.shell {
+  position: relative;
+  height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* Glow radial de acento arriba-centro (medidas del mockup: 360×260, top −90) */
+.glow {
+  position: absolute;
+  top: -90px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 360px;
+  height: 260px;
+  background: radial-gradient(50% 60% at 50% 50%, var(--glow) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Contenedor de la vista activa. El padding inferior reserva el hueco de la
+   isla de navegación (56px en el mockup) + safe-area de PWA iOS. */
+.viewport {
+  position: relative;
+  z-index: 10;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+  animation: fadein 0.18s ease;
+}
+
+/* Entrada de vista (DESIGN.md §11) */
+@keyframes fadein {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Fade sin desplazamiento para quien pide menos movimiento */
+@keyframes fadein-still {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .viewport {
+    animation: fadein-still 0.18s ease;
+  }
+}

@@ -17,9 +17,8 @@ import '@fontsource/jetbrains-mono/400-italic.css'
 import './styles/tokens.css'
 import App from './App'
 
-// Tema por defecto; los 3 temas (midnight/lavender/magenta) se conmutarán desde Settings
-document.documentElement.dataset.theme = 'midnight'
-
+// El tema lo gestiona ThemeProvider (src/theme/); index.html trae
+// data-theme="midnight" de base para evitar flash antes de hidratar.
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />

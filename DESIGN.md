@@ -59,10 +59,12 @@ tema activo (se setean como variables CSS en la raíz de la app / marco).
 | `--accent` | acento de marca (violeta): activo, cursor, botones primarios, keyword |
 | `--accent2` | acento secundario (bordes de foco fuerte, split) |
 | `--glow` | glow radial de acento (fondo, sombras de la isla) |
+| `--on-accent` | texto/glifos **encima** de `--accent` (botones Approve/Send, burbuja de usuario, segmented activo, knob del toggle, badge del proyecto) |
 | `--green` `--red` `--yellow` `--blue` `--orange` | estados, git y **syntax highlighting** |
 
-> Sobre acento: el texto **encima** de `--accent` es oscuro (`#0b0712` / `#0a0a0f`), no blanco
-> (botones Approve/Send, burbuja de usuario, badges de icono de archivo).
+> Sobre acento: el texto **encima** de `--accent` nunca es blanco: usa `--on-accent` (oscuro,
+> `#0b0712` en los 3 temas — valor del mockup). Excepción documentada: los **badges de icono de
+> archivo** (colores fijos por extensión, no de acento) usan el literal `#0a0a0f` (ver abajo).
 
 ### Los 3 temas (valores exactos del mockup — copiar tal cual)
 
@@ -70,21 +72,21 @@ tema activo (se setean como variables CSS en la raíz de la app / marco).
 ```
 --bg #0a0a0f  --surface #111119  --surface2 #191926  --border #242433
 --text #e8e8f2  --dim #9494ac  --faint #565670
---accent #a970ff  --accent2 #8b5cf6  --glow rgba(169,112,255,.28)
+--accent #a970ff  --accent2 #8b5cf6  --glow rgba(169,112,255,.28)  --on-accent #0b0712
 --green #63e6a3  --red #ff7a90  --yellow #f0d070  --blue #74b6ff  --orange #ff9e64
 ```
 **Lavender** (`slate`)
 ```
 --bg #14141a  --surface #1d1d26  --surface2 #262632  --border #333342
 --text #ececf3  --dim #a2a2b6  --faint #6a6a80
---accent #b6a0ff  --accent2 #9683f0  --glow rgba(182,160,255,.20)
+--accent #b6a0ff  --accent2 #9683f0  --glow rgba(182,160,255,.20)  --on-accent #0b0712
 --green #7fe0ac  --red #ff8698  --yellow #efd587  --blue #8ec0ff  --orange #ffab77
 ```
 **Magenta** (`indigo`)
 ```
 --bg #09060f  --surface #150d21  --surface2 #1f1531  --border #2d2042
 --text #f3ecff  --dim #b2a2cc  --faint #6c5c86
---accent #c264ff  --accent2 #9b3ff0  --glow rgba(194,100,255,.32)
+--accent #c264ff  --accent2 #9b3ff0  --glow rgba(194,100,255,.32)  --on-accent #0b0712
 --green #66e6b0  --red #ff6f97  --yellow #f2cf7a  --blue #7fa8ff  --orange #ff8f6b
 ```
 
@@ -129,14 +131,22 @@ tema activo (se setean como variables CSS en la raíz de la app / marco).
 - **Marco**: columna única `100dvh`, `overflow:hidden`; el scroll vive en el `<main>` de cada vista
   (patrón app-shell, evita barras flotantes en PWA iOS). Fondo `--bg` con el glow por encima.
 - **Status bar** (solo mockup/preview): hora, dynamic island, señal/batería. En la PWA real la pinta el SO.
-- **Navegación = "isla dinámica" flotante** abajo-centro, `position: fixed`, `pointer-events` solo en
-  la píldora:
-  - **Cerrada**: píldora translúcida (`backdrop-filter: blur`) = icono de acento de la vista activa +
-    su label + "hamburguesa" de 2 líneas. Un tap la **expande**.
-  - **Abierta**: fila con las **5 pestañas** (icono mono + label), la activa con fondo `--surface2` y
-    glow; detrás, un **scrim** oscuro con blur que cierra al tocar.
+- **Navegación = "isla dinámica" flotante** abajo-centro, `position: fixed` (bottom `20px` +
+  `env(safe-area-inset-bottom)`), `pointer-events` solo en la píldora. El cuerpo de la app reserva
+  `56px` inferiores (+ safe-area) para que el contenido no quede debajo.
+  - **Cerrada**: píldora translúcida = icono de acento de la vista activa + su label + "hamburguesa"
+    de 2 líneas (`--faint`). Fondo `color-mix(in srgb, var(--surface) 72%, transparent)` +
+    `backdrop-filter: blur(22px)`, borde 1px `--border`, radio `24px`, sombra
+    `0 10px 34px rgba(0,0,0,.55), 0 0 22px var(--glow)` (variante ligera de §4). Un tap la **expande**.
+  - **Abierta**: fila con las **5 pestañas** (icono mono 15px + label 9.5px; padding `8px 13px`,
+    radio `17px`), la activa con fondo `--surface2`, color `--accent` y glow `0 0 16px var(--glow)`.
+    Contenedor: fondo `color-mix(in srgb, var(--surface) 86%, transparent)` + `blur(26px)`, radio
+    `28px`, sombra de §4. Detrás, un **scrim** que cierra al tocar: `rgba(0,0,0,.30)` +
+    `backdrop-filter: blur(2px)`.
   - Iconos: Files `▤` · Editor `{ }` · Chat `✦` · Terminal `>_` · Settings `⚙`.
   - Animaciones: `islandOpen` (.22s `cubic-bezier(.2,.9,.3,1.2)`) y `islandScrim` (.18s). Ver §11.
+  - Nota: el mockup congela el fondo de la isla en `rgba(17,17,25,…)` (surface de Midnight) para los
+    3 temas; el sistema lo tokeniza con `color-mix` sobre `--surface` para que siga al tema activo.
 
 ## 6. Vista Chat (Claude Code) — la estrella
 
@@ -144,7 +154,7 @@ Réplica de Claude Code en VS Code (ver [CLAUDE.md](CLAUDE.md) §4). Estructura:
 
 - **Cabecera**: pestañas de chats (icono `✦`, activa con subrayado `--accent` y fondo `--surface2`) + `+` para nuevo chat.
 - **Hilo** (scroll): burbujas y bloques con `gap` generoso.
-  - **Usuario**: alineado a la derecha, fondo `--accent`, texto `#0b0712`, radio `15px 15px 4px 15px`, máx ~82%.
+  - **Usuario**: alineado a la derecha, fondo `--accent`, texto `--on-accent`, radio `15px 15px 4px 15px`, máx ~82%.
   - **Asistente**: alineado a la izquierda, con cabecerita (`✦` en cuadradito + "Claude Code" en `--dim`).
     - **Thinking** colapsable: "Thought for a moment" en `--faint` cursiva; al abrir, bloque con
       borde-izquierdo `--border`.
@@ -194,7 +204,7 @@ Secciones tipo "lista agrupada" (card `--surface`, filas separadas por 1px `--bo
 
 - **VPS Connection**: Host, User·Port, SSH Key (✓), Status (`● Connected · uptime` en `--green`).
 - **Claude Code**: Model (mono `--accent`), **Permission mode** = segmented `Ask / Plan / Auto` (activo
-  `--accent` texto oscuro), **Auto-approve edits** = toggle (track `--accent` cuando ON, knob `#0b0712`).
+  `--accent` texto `--on-accent`), **Auto-approve edits** = toggle (track `--accent` cuando ON, knob `--on-accent`).
 - **Appearance**: **Theme** = 3 swatches (fondo del tema + puntito de acento; activo con borde de acento
   + glow), **Editor font size** = stepper `− 14px +` (mono). Pie con versión en mono `--faint`.
 
