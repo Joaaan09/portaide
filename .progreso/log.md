@@ -4,6 +4,35 @@
 
 ---
 
+2026-07-02 (consulta · terminal sin sudo / usuario node) — El usuario preguntó por qué en la vista
+Terminal no hay `sudo` y sale como usuario `node`. Aclarado: el pty corre **dentro** del contenedor
+`portaide-backend` (`USER node`, UID 1000 = kuoyii en el host), no es una shell del VPS; `sudo` ni
+está instalado ni tendría sentido (sería root de la cajita efímera, no del host). Se debatió pasar a
+**SSH / backend-en-host** para tener sudo: se descartó de momento. Conclusión fijada — **SSH no es
+"más seguro"**: el transporte seguro ya lo da HTTPS/WSS; SSH solo ampliaría el blast radius de una
+brecha del borde (de "cajita aislada" a "VPS entero, incluidas otras apps como smartpeak"). **Criterio
+para el futuro:** si algún día se quiere sudo/host, el orden correcto es **endurecer el borde primero**
+(passkey/2FA, o meter PortaIDE tras VPN Tailscale/mTLS de NPM) y **luego** abrir permisos; hacerlo al
+revés dejaría peor que un SSH-con-clave. El borde actual (revisado) está decente: bcrypt 10 rounds,
+comparación en tiempo constante, rate-limit 10/IP/15min. **Sin cambios de código**; se mantiene la
+arquitectura v1 (decisiones.md:18).
+
+2026-07-02 (5ª sesión · Mongo → SQLite) — El usuario cuestionó si Mongo tenía sentido para una
+herramienta de un solo usuario. Análisis: lo único persistido es la **meta de las pestañas de chat**
+(título/`claudeSessionId`/`cwd`/timestamps), no mensajes ni usuarios (el usuario vive en `.env`); Mongo
+estaba solo por consistencia MERN con el resto del VPS. Decidido **retirar Mongo y pasar a SQLite**
+(`better-sqlite3`, embebido). Ejecutor migró: `db/sqlite.ts` (nuevo, WAL + tabla `chat_sessions`)
+sustituye `db/mongo.ts`; `chat/store.ts` reescrito **sin fallback en memoria** (embebido siempre
+disponible; si no abre → `process.exit(1)`); modelo mongoose borrado; `env.sqlitePath`; `system`
+devuelve `database:{engine,ok}`; compose sin servicio `mongo` (+ volumen `portaide_data:/app/data`);
+Dockerfile crea `/app/data` con owner 1000. Cliente: `SystemInfo`/SystemPanel actualizados. Docs:
+decisiones.md (entrada nueva + MERN supersedida), CLAUDE.md §2/§9. **Verificado** typecheck+build verdes
+y smoke create/list/delete contra `dist`; la compilación nativa de better-sqlite3 en la imagen se
+confirma en el `docker compose build` del VPS (deploy pendiente del usuario). Volumen `portaide_mongo_data`
+queda huérfano en el VPS (borrable tras desplegar).
+
+---
+
 2026-07-02 (4ª sesión · fixes sobre Settings desplegado) — Encargo de ampliar Settings (que "no dejaba
 cambiar nada"). Trabajé en paralelo con **otra sesión sobre el mismo working tree** que ya había
 implementado+commiteado+desplegado la misma vista (Account + Appearance + System `/api/system`);

@@ -115,7 +115,7 @@ export interface SystemInfo {
   backend: { uptimeSeconds: number; node: string }
   claude: { version: string | null }
   workspace: { fsRoot: string }
-  mongo: { connected: boolean }
+  database: { engine: string; ok: boolean }
 }
 
 export const getSystemInfo = (): Promise<SystemInfo> => api.get<SystemInfo>('/system')

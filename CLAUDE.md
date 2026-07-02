@@ -41,8 +41,8 @@ Lema de marca: *"Portable IDE — code on your VPS from anywhere, with Claude Co
 - **Chat IA**: se apoya en el **CLI `claude`** (ver §4), no reimplementa el agente.
 - **Despliegue**: **Docker Compose detrás de Nginx Proxy Manager** (el patrón común de este VPS):
   red externa `reverse_proxy_network` compartida con NPM (que termina TLS), frontend nginx con
-  `expose 80` (sin `ports:` al host), backend y `mongo:7` en red interna, healthchecks encadenados,
-  secretos vía `.env` (gitignored) + `.env.example`. El modelo a imitar es **SmartPeak**
+  `expose 80` (sin `ports:` al host), backend en red interna (SQLite embebido, sin contenedor de BD),
+  healthchecks encadenados, secretos vía `.env` (gitignored) + `.env.example`. El modelo a imitar es **SmartPeak**
   (`../smartpeak`); el detalle completo y las peculiaridades de PortaIDE (montajes del host, WS)
   están en [.progreso/decisiones.md](.progreso/decisiones.md) (entrada "Despliegue").
 
@@ -167,13 +167,14 @@ Desplegar subagentes **no siempre es necesario**. Si la tarea es sencilla, puede
   `main` es solo para cambios ya validados; nunca se desarrolla sobre `main`.
 - **Componentes**: funcionales, pequeños y modulares. Si un patrón de UI se repite, extráelo. Cero
   hardcode de colores: siempre tokens del sistema.
-- **Stack (confirmado 2026-07-02, detalle en decisiones.md)**: **MERN**. Monorepo sin workspaces:
+- **Stack (confirmado 2026-07-02, detalle en decisiones.md)**: React + Express + Node sobre **SQLite**
+  (era MERN; Mongo se retiró por SQLite — ver decisiones.md). Monorepo sin workspaces:
   `client/` (Vite + React + TS, **CSS vanilla con tokens + CSS Modules** — sin Tailwind; PWA con
   fuentes autoalojadas @fontsource; editor **CodeMirror 6**, terminal **xterm.js**) + `server/`
-  (Node 20 + Express + TS, **ws** para terminal/chat, `node-pty`, **mongoose**, puente al CLI
-  `claude`). **MongoDB** (`mongo:7` en Docker, red interna, con auth) para sesiones de chat y
-  ajustes; el estado real de los proyectos sigue siendo el filesystem del VPS. No inventes libs
-  sin anotarlo como decisión.
+  (Node 20 + Express + TS, **ws** para terminal/chat, `node-pty`, **better-sqlite3**, puente al CLI
+  `claude`). **SQLite** (`better-sqlite3`, embebido; fichero en volumen Docker) para la meta de las
+  sesiones de chat; el estado real de los proyectos sigue siendo el filesystem del VPS. No inventes
+  libs sin anotarlo como decisión.
 - No inventes decisiones pendientes (libs concretas, detalles del puente `claude`, multi-VPS): **pregunta o anótalo**.
 
 ## 10. Comandos

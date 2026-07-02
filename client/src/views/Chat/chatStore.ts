@@ -547,7 +547,7 @@ class ChatStore {
     if (idx === -1) return
 
     // Best-effort: borra la meta en el server; se ignora el fallo (404 si nunca
-    // se persistió, o red/Mongo caídos). La pestaña se cierra en local igual.
+    // se persistió, o red/servidor caídos). La pestaña se cierra en local igual.
     fetch(`/api/chat/sessions/${encodeURIComponent(id)}`, {
       method: 'DELETE',
       credentials: 'include',

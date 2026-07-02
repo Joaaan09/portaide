@@ -56,6 +56,11 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY package*.json ./
 
+# Dir de datos de SQLite: lo creamos con owner uid 1000 (= usuario `node`) ANTES
+# de que el named volume `portaide_data` se monte, para que herede ese owner y el
+# proceso (USER node) pueda escribir el fichero .db.
+RUN mkdir -p /app/data && chown 1000:1000 /app/data
+
 EXPOSE 4100
 USER node
 

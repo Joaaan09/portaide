@@ -27,7 +27,8 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=4100
-      - MONGODB_URI=mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongo:27017/portaide?authSource=admin
+      # Persistencia: SQLite embebido en un volumen nombrado (ver volumes abajo).
+      - SQLITE_PATH=/app/data/portaide.db
       # Borde de seguridad (CLAUDE.md §11): firma de sesión + credencial del usuario único.
       - SESSION_SECRET=${SESSION_SECRET}
       - AUTH_EMAIL=${AUTH_EMAIL}
@@ -41,37 +42,11 @@ services:
     volumes:
       - /home/kuoyii/servers:/home/kuoyii/servers
       - /home/kuoyii/.claude:/home/kuoyii/.claude
+      # Persistencia SQLite (meta de las pestañas de chat).
+      - portaide_data:/app/data
       # Descomentar SOLO si se quiere operar Docker desde la vista Terminal
       # (requiere docker CLI en la imagen; precedente: Portainer ya corre así).
       # - /var/run/docker.sock:/var/run/docker.sock
-    depends_on:
-      mongo:
-        condition: service_healthy
-    networks:
-      - internal
-
-  # Base de datos — MongoDB con autenticación y volumen persistente
-  mongo:
-    image: mongo:7
-    container_name: portaide-mongo
-    restart: unless-stopped
-    # Expuesto SOLO al loopback del host para `npm run dev` local, en 27018
-    # (¡27017 del loopback ya lo ocupa smartpeak-mongo!). NO accesible desde
-    # fuera del VPS. Quítalo si dejas de usar dev local.
-    ports:
-      - "127.0.0.1:27018:27017"
-    environment:
-      - MONGO_INITDB_ROOT_USERNAME=${MONGO_USER}
-      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_PASSWORD}
-      - MONGO_INITDB_DATABASE=portaide
-    healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-    volumes:
-      - portaide_mongo_data:/data/db
     networks:
       - internal
 
@@ -79,9 +54,10 @@ networks:
   # Red compartida con Nginx Proxy Manager (ya existe en el servidor)
   reverse_proxy_network:
     external: true
-  # Red privada interna del proyecto (frontend <-> backend <-> mongo)
+  # Red privada interna del proyecto (frontend <-> backend)
   internal:
     driver: bridge
 
 volumes:
-  portaide_mongo_data:
+  # Persistencia SQLite del backend (montado en /app/data).
+  portaide_data:

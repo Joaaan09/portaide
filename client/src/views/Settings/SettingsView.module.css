@@ -272,7 +272,7 @@
 
 /* ---------- System · estados ---------- */
 
-/* Estado de conexión de Mongo (DESIGN.md §3: --green OK / --red error) */
+/* Estado de la base de datos (DESIGN.md §3: --green OK / --red error) */
 .stateOk {
   color: var(--green);
 }

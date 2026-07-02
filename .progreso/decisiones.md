@@ -52,21 +52,50 @@
 
 ---
 
-### 2026-07-02 · Stack MERN confirmado: MongoDB entra en v1 (decisión del usuario)
+### ~~2026-07-02 · Stack MERN confirmado: MongoDB entra en v1~~ — SUPERSEDIDA (2026-07-02, ver "SQLite reemplaza a MongoDB")
 
-- **Decisión:** el stack es **MERN** — **MongoDB + Express + React + Node** — como el resto de
+- ~~**Decisión:** el stack es **MERN** — **MongoDB + Express + React + Node** — como el resto de
   proyectos del servidor (SmartPeak, total-grind, connectu, fichame). Mongo (imagen `mongo:7`, con
   auth, en red interna Docker) guarda **sesiones/histórico de chat y ajustes**; el estado real de los
-  proyectos sigue siendo el **filesystem** del VPS.
-- **Motivo:** instrucción directa del usuario; consistencia de infraestructura entre sus proyectos.
-- **Nota crítica (registrada):** para una herramienta de un solo usuario, un store JSON habría
-  bastado en v1; se acepta Mongo por consistencia operativa (mismo patrón de compose, backups y
-  mantenimiento que el resto del servidor) y porque el histórico de sesiones de chat sí encaja bien
-  en documentos.
+  proyectos sigue siendo el **filesystem** del VPS.~~
+- **Motivo (original):** instrucción directa del usuario; consistencia de infraestructura entre sus proyectos.
+- **Nota crítica (registrada — y que acabó pesando más):** para una herramienta de un solo usuario, un
+  store embebido habría bastado; se aceptó Mongo por consistencia operativa. Revisado el mismo día
+  (ver siguiente entrada), esa consistencia no compensó el coste y se revirtió.
+
+---
+
+### 2026-07-02 · SQLite reemplaza a MongoDB (decisión del usuario)
+
+- **Decisión:** se retira **MongoDB** y la persistencia pasa a **SQLite** (`better-sqlite3`, síncrono,
+  embebido), fichero en `SQLITE_PATH` (`/app/data/portaide.db` en Docker, volumen nombrado
+  `portaide_data`; `./data/portaide.db` en dev). El stack deja de ser MERN estricto: **SQLite +
+  Express + React + Node**.
+- **Motivo:** lo único que se persiste es la **meta de las pestañas de chat** (título,
+  `claudeSessionId`, `cwd`, timestamps) — no mensajes, no usuarios (el usuario único vive en `.env`).
+  Para ese volumen, un `mongo:7` (contenedor + auth + healthcheck + backup + un servicio más en el
+  borde §11) es desproporcionado. SQLite embebido lo cubre con **cero contenedor, un fichero de
+  backup y menos superficie de red**. La razón original (homogeneidad MERN con el resto del VPS) no
+  compensó el coste para esta herramienta.
+- **Qué cambió:** `db/sqlite.ts` (nuevo: `initDb()` + `getDb()`, WAL, tabla `chat_sessions`) sustituye
+  a `db/mongo.ts`; `chat/store.ts` reescrito (mismas firmas `async`, **sin fallback en memoria** — al
+  ser embebida SIEMPRE está; si no abre, `process.exit(1)` ruidoso); modelo mongoose eliminado;
+  `env.sqlitePath`; `system` devuelve `database:{engine,ok}` en vez de `mongo:{connected}`;
+  `docker-compose.yml` sin servicio `mongo`; `Dockerfile` crea `/app/data` con owner 1000 para el volumen.
+- **Migración de datos:** ninguna. Las sesiones que hubiera en el volumen Mongo (solo títulos de
+  pestañas) se descartan. El volumen `portaide_mongo_data` queda huérfano en el VPS y puede borrarse
+  (`docker volume rm portaide_mongo_data`) tras desplegar.
+- **Futuro:** si algún día hace falta multiusuario/2FA, SQLite sigue sirviendo (una tabla `users`); no
+  se reintroduce Mongo salvo necesidad real de documentos/escala que hoy no existe.
 
 ---
 
 ### 2026-07-02 · Despliegue: Docker Compose + Nginx Proxy Manager (patrón SmartPeak)
+
+> **Actualizado (2026-07-02):** ya **no hay servicio `mongo`** (SQLite embebido lo sustituye, ver
+> entrada "SQLite reemplaza a MongoDB"). Ahora son **2 servicios** (`frontend` + `backend`); la cadena
+> de salud es **backend healthy → frontend arranca**; el backend monta el volumen `portaide_data` en
+> `/app/data` para el fichero SQLite. El resto del patrón (NPM, nginx, WS, secretos) sigue vigente.
 
 - **Decisión:** PortaIDE se despliega como los demás proyectos del VPS: **Docker Compose detrás de
   Nginx Proxy Manager** (contenedor `npm-app`, termina TLS en 80/443 y enruta por la red externa
@@ -113,7 +142,8 @@
 - **Fuentes autoalojadas** vía **@fontsource** (`ibm-plex-sans`, `jetbrains-mono`): PWA offline-able,
   sin dependencia de Google Fonts.
 - **Editor:** **CodeMirror 6** (mejor táctil/móvil y más ligero que Monaco). **Terminal:** **xterm.js**.
-- **Backend:** **Express + TypeScript**, **ws** (WebSocket), **node-pty** (pty real), **mongoose** (Mongo).
+- **Backend:** **Express + TypeScript**, **ws** (WebSocket), **node-pty** (pty real), **better-sqlite3**
+  (SQLite embebido; sustituyó a `mongoose`/Mongo — ver "SQLite reemplaza a MongoDB").
 - **Monorepo sin workspaces** (patrón SmartPeak): `client/` y `server/` con `package.json` propios +
   raíz con `concurrently` (`npm run dev` levanta ambos).
 
@@ -146,7 +176,7 @@
   el borde de seguridad.
 - **Usuario sembrado:** `jcollvir@gmail.com` (pass en `.env`; **débil y compartida en claro por chat —
   a cambiar cuanto antes**, anotado para el usuario).
-- **Futuro:** colección `users` en Mongo cuando haga falta multiusuario o 2FA/passkeys.
+- **Futuro:** tabla `users` en la DB (SQLite) cuando haga falta multiusuario o 2FA/passkeys.
 
 ---
 

@@ -2,6 +2,7 @@
 // PORT por defecto 4100 — elegido para no chocar con 3000/3900/4000/5000
 // de otros proyectos del VPS.
 import 'dotenv/config';
+import path from 'node:path';
 
 const nodeEnv = process.env.NODE_ENV || 'development';
 
@@ -49,8 +50,9 @@ export const env = {
   port: Number(process.env.PORT) || 4100,
   /** Entorno de ejecución. */
   nodeEnv,
-  /** URI de MongoDB. Opcional: sin ella la app funciona (sin persistencia). */
-  mongodbUri: process.env.MONGODB_URI || undefined,
+  /** Ruta del fichero SQLite (única persistencia). Default: ./data/portaide.db
+   *  resuelto desde el cwd; en Docker se fija a /app/data/portaide.db. */
+  sqlitePath: process.env.SQLITE_PATH || path.resolve(process.cwd(), 'data', 'portaide.db'),
   /** Secreto de firma del JWT de sesión (HS256). */
   sessionSecret,
   /** Email del usuario único autorizado (login). */

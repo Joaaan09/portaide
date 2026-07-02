@@ -26,7 +26,7 @@ type State =
   | { status: 'ready'; data: SystemInfo }
 
 /** Etiquetas de las filas (también sirven de plantilla del skeleton). */
-const ROW_LABELS = ['Backend', 'Node', 'Claude CLI', 'Workspace', 'Mongo'] as const
+const ROW_LABELS = ['Backend', 'Node', 'Claude CLI', 'Workspace', 'Database'] as const
 
 export default function SystemPanel() {
   const [state, setState] = useState<State>({ status: 'loading' })
@@ -65,7 +65,7 @@ export default function SystemPanel() {
     )
   }
 
-  const { backend, claude, workspace, mongo } = state.data
+  const { backend, claude, workspace, database } = state.data
   return (
     <>
       <SettingsRow label="Backend">
@@ -80,9 +80,9 @@ export default function SystemPanel() {
       <SettingsRow label="Workspace">
         <span className={styles.rowValue}>{workspace.fsRoot}</span>
       </SettingsRow>
-      <SettingsRow label="Mongo">
-        <span className={`${styles.rowValue} ${mongo.connected ? styles.stateOk : styles.stateBad}`}>
-          {mongo.connected ? 'Connected' : 'Disconnected'}
+      <SettingsRow label="Database">
+        <span className={`${styles.rowValue} ${database.ok ? styles.stateOk : styles.stateBad}`}>
+          {database.ok ? 'SQLite' : 'Error'}
         </span>
       </SettingsRow>
     </>

@@ -2,7 +2,10 @@
 
 > Léeme al empezar. Actualízame al terminar cada sesión.
 
-**Última actualización:** 2026-07-02 (4ª sesión)
+**Última actualización:** 2026-07-02 (5ª sesión)
+
+**5ª sesión — persistencia migrada de MongoDB a SQLite** (`better-sqlite3`, embebido): ya no hay
+contenedor de BD. Detalle abajo en "Deploy" y en `log.md`/`decisiones.md`.
 
 ## Dónde estamos
 
@@ -27,15 +30,17 @@ Hecho en esta sesión (commits `ffbe7a4`…`76306ff` + deploy):
 - **Docker**: imagen backend `node:20-slim` (glibc, compat con claude-code y node-pty), toolchain para
   node-pty, `claude` global + wrapper `clauded`, git/bash, `HOME=/home/kuoyii`, corre como uid 1000;
   monta `/home/kuoyii/servers` y `~/.claude`. Compose pasa SESSION_SECRET/AUTH_*/FS_ROOT.
-- **Deploy**: reseteado el volumen vacío de Mongo (el `up` de scaffolding lo creó sin auth); ahora
-  Mongo autentica y el backend conecta (`[mongo] conectado`).
+- **Deploy**: **persistencia migrada de Mongo a SQLite** (`better-sqlite3`, embebido; fichero en el
+  volumen `portaide_data:/app/data`). Ya no hay servicio `mongo` en el compose. Pendiente `docker
+  compose up -d --build` en el VPS (confirma la compilación nativa de better-sqlite3 en la imagen).
 
 ## Cómo entrar
 
 - **URL**: la que configuraste en Nginx Proxy Manager → `portaide-frontend`. **Login**:
   `jcollvir@gmail.com` / `joan5599`.
-- Secretos en `/home/kuoyii/servers/portaide/.env` (gitignored, chmod 600): MONGO_*, SESSION_SECRET,
-  AUTH_EMAIL, AUTH_PASSWORD. Puertos: backend 4100 (interno), mongo loopback 27018.
+- Secretos en `/home/kuoyii/servers/portaide/.env` (gitignored, chmod 600): SESSION_SECRET,
+  AUTH_EMAIL, AUTH_PASSWORD. Puertos: backend 4100 (interno). Los `MONGO_*` del `.env` ya no se usan
+  (borrables); el volumen `portaide_mongo_data` quedó huérfano y puede eliminarse tras desplegar.
 
 ## PENDIENTE — acción del usuario (no lo puedo hacer yo)
 

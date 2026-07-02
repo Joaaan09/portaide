@@ -9,7 +9,7 @@ import { URL } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { createApp } from './app.js';
 import { env } from './config/env.js';
-import { connectMongo } from './db/mongo.js';
+import { initDb } from './db/sqlite.js';
 import { authenticateUpgrade } from './auth/ws.js';
 import { handleTerminalConnection } from './terminal/pty.js';
 import { handleChatConnection } from './chat/ws.js';
@@ -69,7 +69,7 @@ wss.on('connection', (socket) => {
 });
 
 // --- Arranque ------------------------------------------------------------
-connectMongo();
+initDb();
 
 server.listen(env.port, () => {
   console.log(`[portaide] servidor escuchando en http://localhost:${env.port} (${env.nodeEnv})`);

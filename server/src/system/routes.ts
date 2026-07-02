@@ -1,9 +1,9 @@
 // Router del panel "System" de Settings. Se monta DEBAJO del gate de auth en
 // app.ts → requiere sesión (CLAUDE.md §11). Devuelve datos REALES del proceso, del
-// CLI `claude` y de Mongo para pintar el estado del backend en la UI.
+// CLI `claude` y de la base de datos (SQLite) para pintar el estado del backend en la UI.
 import { Router } from 'express';
-import mongoose from 'mongoose';
 import { FS_ROOT } from '../fs/paths.js';
+import { getDb } from '../db/sqlite.js';
 import { getClaudeVersion } from './claudeVersion.js';
 
 export const systemRouter = Router();
@@ -13,7 +13,17 @@ interface SystemInfo {
   backend: { uptimeSeconds: number; node: string };
   claude: { version: string | null };
   workspace: { fsRoot: string };
-  mongo: { connected: boolean };
+  database: { engine: 'sqlite'; ok: boolean };
+}
+
+/** ¿Responde la DB a un SELECT trivial? (embebida: debería salvo corrupción). */
+function isDbOk(): boolean {
+  try {
+    getDb().prepare('SELECT 1').get();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // --- GET /api/system ------------------------------------------------------
@@ -27,8 +37,8 @@ systemRouter.get('/', async (_req, res) => {
     claude: { version: claudeVersion },
     // Reutiliza la MISMA raíz que usa el guard anti path-traversal (fs/paths.ts).
     workspace: { fsRoot: FS_ROOT },
-    // readyState === 1 ⇒ 'connected' (mongoose). Cualquier otro estado ⇒ false.
-    mongo: { connected: mongoose.connection.readyState === 1 },
+    // SQLite embebido: ok si un SELECT trivial no lanza.
+    database: { engine: 'sqlite', ok: isDbOk() },
   };
   res.json(info);
 });
