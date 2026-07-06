@@ -23,10 +23,9 @@ terminar** puedes extenderte un poco con el resumen del resultado. Detalle exhau
 ## 1. Qué es
 
 **PortaIDE** = un **IDE portátil, web y mobile-first** para **programar desde el móvil usando IA**.
-Es una **herramienta personal** (un solo usuario: yo por el momento): conecta con **mi VPS**, que tiene **Claude
-Code instalado**, para trabajar con mis proyectos desde el teléfono. Instalable como **PWA**
-(standalone, vertical). El corazón del producto es el **chat de IA con la misma estructura que
-Claude Code en VS Code** (ver §4).
+**Herramienta personal** (un solo usuario, yo por ahora): conecta con **mi VPS** (con **Claude Code
+instalado**) para trabajar con mis proyectos desde el teléfono. Instalable como **PWA** (standalone,
+vertical). El corazón es el **chat de IA con la misma estructura que Claude Code en VS Code** (§4).
 
 Lema de marca: *"Portable IDE — code on your VPS from anywhere, with Claude Code built in."*
 
@@ -39,17 +38,17 @@ Lema de marca: *"Portable IDE — code on your VPS from anywhere, with Claude Co
 - **Filesystem**: API para árbol, leer y escribir archivos del proyecto abierto (vista *Files* / *Editor*).
 - **Terminal**: `pty` real por WebSocket (vista *Terminal*). Teclas especiales para móvil.
 - **Chat IA**: se apoya en el **CLI `claude`** (ver §4), no reimplementa el agente.
-- **Despliegue**: **Docker Compose detrás de Nginx Proxy Manager** (el patrón común de este VPS):
-  red externa `reverse_proxy_network` compartida con NPM (que termina TLS), frontend nginx con
-  `expose 80` (sin `ports:` al host), backend en red interna (SQLite embebido, sin contenedor de BD),
-  healthchecks encadenados, secretos vía `.env` (gitignored) + `.env.example`. El modelo a imitar es **SmartPeak**
-  (`../smartpeak`); el detalle completo y las peculiaridades de PortaIDE (montajes del host, WS)
-  están en [.progreso/decisiones.md](.progreso/decisiones.md) (entrada "Despliegue").
+- **Despliegue**: **Docker Compose tras Nginx Proxy Manager** (patrón de este VPS): red externa
+  `reverse_proxy_network` con NPM (termina TLS), frontend nginx con `expose 80` (sin `ports:` al host),
+  backend en red interna (SQLite embebido, sin contenedor de BD), healthchecks encadenados, secretos
+  vía `.env` (gitignored) + `.env.example`. Modelo a imitar: **SmartPeak** (`../smartpeak`); detalle y
+  peculiaridades de PortaIDE (montajes del host, WS) en [decisiones.md](.progreso/decisiones.md) ("Despliegue").
 
 ## 3. Las 5 vistas (norte de producto)
 
-La app tiene **5 destinos**, navegables por una **"isla dinámica" flotante** abajo (no tab bar
-clásica: pulsar la píldora la expande a las 5 pestañas). Definidas en el mockup (§5):
+La app tiene **5 destinos**. Navegación (revisado 2026-07-03, ver [decisiones.md](.progreso/decisiones.md)):
+**drawer con hamburguesa `☰` por defecto** + **barra inferior alternativa**, intercambiables en Settings
+(ya **no** la isla dinámica flotante). Vistas, definidas en el mockup (§5):
 
 1. **Files** (`▤`) — explorer en árbol, estado git por archivo (M/A/…), cabecera con nombre del
    proyecto + rama + estado de conexión.
@@ -72,10 +71,9 @@ El chat **no** es un chat genérico: replica la experiencia de **Claude Code en 
   (Read, Edit con **diff + botones Approve/Reject**, Bash con salida). Ver el render exacto en el mockup.
 - Debe permitir, **desde la interfaz** (como el propio Claude Code): **cambiar de modelo**, usar
   **slash-commands** y gestionar el **permission mode**.
-- En el VPS existe el alias **`clauded` = `claude --dangerously-skip-permissions`** (skip de permisos).
-  Es aceptable porque es **mi máquina y mi herramienta de un solo usuario**, pero **eleva el listón
-  de seguridad de red** (ver §11): si el agente puede tocar todo sin pedir permiso, el borde
-  (auth + HTTPS) tiene que estar blindado.
+- Alias en el VPS: **`clauded` = `claude --dangerously-skip-permissions`** (skip de permisos). Aceptable
+  por ser **mi máquina, herramienta de un solo usuario**, pero **eleva el listón de seguridad de red**
+  (§11): si el agente toca todo sin pedir permiso, el borde (auth + HTTPS) debe estar blindado.
 - Detalles finos del puente (modo exacto de invocación, sesiones, mapeo de eventos→UI) están **por
   cerrar**: decídelos y anótalos en [.progreso/decisiones.md](.progreso/decisiones.md) antes de fijarlos en código.
 
@@ -103,16 +101,15 @@ Resumen mínimo (el detalle está en DESIGN.md):
 
 Si algo visual no está en DESIGN.md: **decídelo y añádelo a DESIGN.md primero**, luego implementa.
 
-**Skills de diseño (criterio de craft).** En tareas de UI sigue las skills instaladas —
-`emil-design-eng`, `review-animations`, `design-taste-frontend` (en `.claude/skills/`), sobre todo
-para **motion, interacción y pulido**. Son **guía, no autoridad**: ante conflicto **manda DESIGN.md**.
-Usa `review-animations` como rúbrica al revisar cualquier animación.
+**Skills de diseño (craft).** En UI sigue las skills instaladas (`emil-design-eng`, `review-animations`,
+`design-taste-frontend`, en `.claude/skills/`) para **motion, interacción y pulido**. Son **guía, no
+autoridad**: ante conflicto **manda DESIGN.md**. Usa `review-animations` como rúbrica de animaciones.
 
 ## 6. Orden de construcción
 
 **Fase 1 — Bloquear el sistema de diseño** (antes de features): tokens CSS de los 3 temas + fuentes
-→ shell móvil (isla dinámica + status bar) → **vista Chat** (es la estrella) hasta que el tono sea
-correcto. Iterar solo sobre el shell + Chat hasta clavar la sensación.
+→ shell móvil (nav + status bar) → **vista Chat** (la estrella) hasta clavar el tono. Iterar solo
+sobre shell + Chat.
 
 **Fase 2 — Construir contra el sistema bloqueado**: Files → Editor → Terminal → Settings reutilizan
 tokens y patrones ya validados. Backend (FS API + pty WS + puente `claude`) en paralelo según haga falta.
@@ -133,26 +130,36 @@ Agentes en [.claude/agents/](.claude/agents/) · skills en [.claude/skills/](.cl
 
 ## 8. Sistema multiagente
 
-Eres el ORQUESTADOR. Tu trabajo es coordinar, no ejecutar el trabajo pesado.
+Eres el ORQUESTADOR, pero **por defecto operas en Modo Directo** (ejecutas tú el cambio y respondes).
+Coordinar subagentes es la **excepción**: solo para tareas de alto impacto y **con mi autorización
+explícita** (ver protocolo). El flujo con arnés (más abajo) solo aplica cuando autorizo el "Sí".
 
-### Flujo de cada tarea
+### Protocolo crítico de activación de subagentes (modo interactivo)
+
+1. **Filtro de entrada obligatorio:**
+   - Ante CUALQUIER petición, evalúa su complejidad y **por defecto opera en Modo Directo** (tú solo, como Orquestador, ejecutas el cambio y respondes).
+   - Queda ESTRICTAMENTE PROHIBIDO invocar a `explorador`, `ejecutor` o `revisor` sin autorización explícita.
+   - **Lo que NUNCA se salta es [.progreso/](.progreso/)**: leerla al empezar y mantenerla al día es obligatorio siempre, también en Modo Directo (que solo evita el **despliegue de subagentes**, no exime de DESIGN.md ni del checklist de UI).
+
+2. **Criterios de complejidad para preguntar:**
+   - Solo si la tarea implica: creación de módulos/vistas desde cero, refactorizaciones masivas de arquitectura, o cambios críticos que afecten a más de 2 archivos a la vez, debes detenerte.
+
+3. **Pregunta de confirmación (botón rojo):**
+   - Si se cumplen los criterios de complejidad, DETÉN la ejecución ANTES de llamar a ningún subagente o alterar la carpeta de progreso.
+   - Responde al usuario EXACTAMENTE con este formato:
+     > "Patrón, esta tarea tiene un impacto arquitectónico alto y requiere precisión quirúrgica. ¿Desea activar el ecosistema de subagentes [Sí] o prefiere que lo resuelva de inmediato en Modo Directo [No]?"
+   - Bloquea el flujo y espera la respuesta del usuario. Si responde "Sí", procedes con el arnés completo. Si responde "No", lo resuelves tú solo en el chat principal.
+
+### Flujo cuando el arnés está activado (respondí "Sí")
+> Aplica **solo** tras autorizar el arnés; pero los pasos **1 y 5 (`.progreso/`) son obligatorios siempre**, también en Modo Directo. Los pasos 2–4 (delegación) solo con arnés.
 1. Lee `.progreso/estado.md` y `.progreso/plan.md` para saber dónde retomar.
 2. Si necesitas entender el código, delega en `explorador` (no leas decenas de archivos tú mismo).
 3. Para implementar, delega en `ejecutor` con una subtarea clara y acotada.
-4. Cuando termine, delega en `revisor` para verificar (tests, calidad, bugs). NO des una tarea por
-   buena sin pasar por el revisor. **Excepción (2026-07-02):** si el orquestador corre con **Fable 5**
-   (o superior), el subagente `revisor` se **omite**: esa verificación (build, tests, lectura crítica
-   del diff) la haces tú mismo antes de dar nada por bueno.
-   - Bugs que NO se arreglan en el momento → `.progreso/bugs.md` (créalo si no existe).
-   - Si se rompió o replanteó una regla del proyecto → `.progreso/decisiones.md`.
+4. Al terminar, delega en `revisor` (tests, calidad, bugs); NO des una tarea por buena sin él.
+   **Excepción (2026-07-02):** con **Fable 5** (o superior) el `revisor` se **omite** y esa verificación
+   (build, tests, lectura crítica del diff) la haces tú antes de dar nada por bueno.
+   - Bugs que no arreglas ahora → `.progreso/bugs.md` (créalo si falta). Regla replanteada → `.progreso/decisiones.md`.
 5. Al cerrar: SOBRESCRIBE `.progreso/estado.md` con la foto actual y AÑADE una línea fechada a `.progreso/log.md`.
-
-### Cuándo saltar el harness (subagentes)
-Desplegar subagentes **no siempre es necesario**. Si la tarea es sencilla, puedes hacerla tú mismo.
-- **No lo decidas por tu cuenta: pregúntamelo primero** ("creo que esto es sencillo, ¿me salto el
-  harness multiagente?") y espera respuesta.
-- **Lo que NUNCA se salta es [.progreso/](.progreso/)**: leerla al empezar y mantenerla al día es obligatorio siempre.
-- Saltar el harness solo afecta al **despliegue de subagentes**, no exime de DESIGN.md ni del checklist de UI.
 
 ### Reglas
 - No acumules contexto innecesario: si algo requiere leer mucho, va al explorador.

@@ -88,12 +88,5 @@
   }
 }
 
-/* ---------- Texto del mensaje ---------- */
-
-.text {
-  margin: 0;
-  font-size: 13.5px;
-  line-height: 20px;
-  color: var(--text);
-  overflow-wrap: break-word;
-}
+/* El texto final del mensaje se renderiza como Markdown en Markdown.tsx
+   (estilos por tokens en Markdown.module.css). */

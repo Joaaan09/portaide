@@ -24,13 +24,22 @@
 
 /* ---------- Tira de pestañas ---------- */
 
-.tabsBar {
+/* Fila superior: ☰ (fijo, fuera del scroll) + tira de pestañas scrollable. */
+.tabsRow {
   flex: none;
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.tabsBar {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: stretch;
   overflow-x: auto;
   scrollbar-width: none;
-  border-bottom: 1px solid var(--border);
   background: var(--surface);
 }
 
@@ -362,6 +371,9 @@
   scrollbar-width: none;
   border-top: 1px solid var(--border);
   background: var(--surface);
+  /* En modo barra inferior reserva su altura para no quedar tapada; en drawer
+     solo la safe-area (§13b). El fondo --surface rellena esa holgura. */
+  padding-bottom: calc(var(--nav-inset, 0px) + env(safe-area-inset-bottom, 0px));
 }
 
 .symbar::-webkit-scrollbar {

@@ -1,8 +1,13 @@
 /* AppShell — marco app-shell (DESIGN.md §5) */
 
 .shell {
-  position: relative;
-  height: 100dvh;
+  /* Anclado al viewport (fixed) en vez de `100dvh` en flujo: así, al abrir/cerrar
+     el teclado del móvil, el marco NO se reacomoda ni deja un hueco residual abajo,
+     y la barra inferior de nav queda siempre pegada al borde real. El scroll vive
+     dentro de cada vista; el pull-to-refresh (píldora fixed) y la nav son hermanos.
+     Sigue siendo ancestro posicionado para el .glow (absolute). */
+  position: fixed;
+  inset: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -25,8 +30,10 @@
 
 /* Contenedor de la vista activa. Reserva el safe-area SUPERIOR de la PWA (notch /
    barra de estado del iPhone) para que las cabeceras de las vistas —con el `+` de
-   nuevo chat y el selector de pestañas— no queden bajo el notch e intocables. El
-   padding inferior reserva el hueco de la isla de navegación (56px) + safe-area. */
+   nuevo chat y el selector de pestañas— no queden bajo el notch e intocables. Abajo
+   es edge-to-edge: el contenido llega al borde real (padding-bottom 0). La safe-area
+   inferior la asume cada superficie por su cuenta: el composer del Chat la rellena y
+   las listas scrollables reservan su holgura con --nav-inset (§13b). */
 .viewport {
   position: relative;
   z-index: 10;
@@ -35,7 +42,7 @@
   display: flex;
   flex-direction: column;
   padding-top: env(safe-area-inset-top, 0px);
-  padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: 0;
   animation: fadein 0.18s ease;
 }
 

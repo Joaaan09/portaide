@@ -2,6 +2,7 @@
 // activa subrayada en --accent, punto --accent si el archivo está modificado
 // (dirty) y botón ✕ para cerrar. Consume la lista de useOpenFiles() (la vista
 // pasa los datos por props).
+import NavMenuButton from '../../components/NavMenuButton/NavMenuButton'
 import type { OpenFile } from '../../openfiles/OpenFilesProvider'
 import styles from './EditorView.module.css'
 
@@ -49,8 +50,10 @@ interface EditorTabsProps {
 
 export default function EditorTabs({ files, activePath, dirty, onSelect, onClose }: EditorTabsProps) {
   return (
-    <div className={styles.tabsBar} role="tablist" aria-label="Archivos abiertos">
-      {files.map((file) => {
+    <div className={styles.tabsRow}>
+      <NavMenuButton />
+      <div className={styles.tabsBar} role="tablist" aria-label="Archivos abiertos">
+        {files.map((file) => {
         const isActive = file.path === activePath
         const isDirty = !!dirty[file.path]
         return (
@@ -79,8 +82,9 @@ export default function EditorTabs({ files, activePath, dirty, onSelect, onClose
               ✕
             </button>
           </div>
-        )
-      })}
+          )
+        })}
+      </div>
     </div>
   )
 }

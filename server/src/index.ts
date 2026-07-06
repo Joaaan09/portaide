@@ -13,6 +13,7 @@ import { initDb } from './db/sqlite.js';
 import { authenticateUpgrade } from './auth/ws.js';
 import { handleTerminalConnection } from './terminal/pty.js';
 import { handleChatConnection } from './chat/ws.js';
+import { runtimeManager } from './chat/runtime.js';
 
 const app = createApp();
 const server = http.createServer(app);
@@ -78,6 +79,8 @@ server.listen(env.port, () => {
 // Cierre limpio (Docker envía SIGTERM al parar el contenedor)
 function shutdown(signal: string): void {
   console.log(`[portaide] ${signal} recibido — cerrando…`);
+  // Aborta los turnos de chat vivos (viven en memoria, desacoplados del WS).
+  runtimeManager.shutdown();
   wss.close();
   server.close(() => process.exit(0));
   // Cortafuegos: si algo queda colgado, salir igualmente

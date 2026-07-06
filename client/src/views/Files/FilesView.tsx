@@ -2,6 +2,7 @@
 // cambiar de carpeta (selector estilo VS Code) + explorer en árbol lazy.
 import { useState } from 'react'
 import { useWorkspace } from '../../workspace/WorkspaceProvider'
+import NavMenuButton from '../../components/NavMenuButton/NavMenuButton'
 import FileTree from './FileTree'
 import FolderPicker from './FolderPicker'
 import styles from './FilesView.module.css'
@@ -35,6 +36,7 @@ export default function FilesView() {
     <main className={styles.view}>
       <header className={styles.header}>
         <div className={styles.project}>
+          <NavMenuButton />
           <span className={styles.badge} aria-hidden="true">
             {initial}
           </span>

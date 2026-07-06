@@ -3,6 +3,7 @@
    del viewport en AppShell, DESIGN.md §5). */
 
 .view {
+  position: relative; /* ancla del overlay de historial (ChatHistory, §6.2) */
   flex: 1;
   min-height: 0;
   display: flex;

@@ -1,10 +1,11 @@
 // Conexión a SQLite (better-sqlite3) — SÍNCRONA y embebida. Es la ÚNICA
 // persistencia de PortaIDE: guarda la META de las pestañas de chat (título,
-// claudeSessionId, cwd, timestamps), NO los mensajes (el contexto lo guarda el
-// engine en ~/.claude y se reanuda con `resume`, decisiones.md "Puente del
-// Chat"). Al ser embebida SIEMPRE está disponible: no hay fallback en memoria.
-// Si el fichero no abre, revienta al arrancar (mejor ruidoso que degradar en
-// silencio).
+// claudeSessionId, cwd, open, timestamps) y ADEMÁS el HILO de mensajes
+// serializado (columna `thread`) para el modelo "cerrar ≠ borrar" + historial.
+// El contexto vivo del engine sigue en ~/.claude y se reanuda con `resume`
+// (decisiones.md "Puente del Chat"); `thread` es la copia renderizable del hilo.
+// Al ser embebida SIEMPRE está disponible: no hay fallback en memoria. Si el
+// fichero no abre, revienta al arrancar (mejor ruidoso que degradar en silencio).
 import fs from 'node:fs';
 import path from 'node:path';
 import Database from 'better-sqlite3';
@@ -35,10 +36,27 @@ export function initDb(): void {
         title TEXT NOT NULL,
         claude_session_id TEXT,
         cwd TEXT,
+        thread TEXT,
+        open INTEGER NOT NULL DEFAULT 1,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
     `);
+
+    // Migración idempotente para BDs preexistentes en el volumen Docker: la
+    // tabla se creó antes de tener `thread`/`open`, así que el CREATE ... IF NOT
+    // EXISTS de arriba NO las añade. Comprobamos las columnas reales y hacemos
+    // ALTER TABLE sólo si faltan (SQLite no soporta ADD COLUMN IF NOT EXISTS).
+    const columns = db
+      .prepare('PRAGMA table_info(chat_sessions)')
+      .all() as Array<{ name: string }>;
+    const columnNames = new Set(columns.map((c) => c.name));
+    if (!columnNames.has('thread')) {
+      db.exec('ALTER TABLE chat_sessions ADD COLUMN thread TEXT');
+    }
+    if (!columnNames.has('open')) {
+      db.exec('ALTER TABLE chat_sessions ADD COLUMN open INTEGER NOT NULL DEFAULT 1');
+    }
 
     console.log(`[sqlite] listo (${file})`);
   } catch (err) {

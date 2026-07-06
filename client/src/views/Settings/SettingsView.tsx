@@ -3,9 +3,11 @@
 // System (estado real del backend). El mock trae 'VPS Connection', pero v1 no
 // usa SSH: se sustituye por System (sin datos SSH).
 import { useAuth } from '../../auth/AuthProvider'
+import NavMenuButton from '../../components/NavMenuButton/NavMenuButton'
 import SettingsGroup from './SettingsGroup'
 import SettingsRow from './SettingsRow'
 import ThemePicker from './ThemePicker'
+import NavPicker from './NavPicker'
 import FontSizeStepper from './FontSizeStepper'
 import SystemPanel from './SystemPanel'
 import styles from './SettingsView.module.css'
@@ -16,6 +18,7 @@ export default function SettingsView() {
   return (
     <main className={styles.view}>
       <header className={styles.header}>
+        <NavMenuButton />
         <h1 className={styles.title}>Settings</h1>
       </header>
 
@@ -45,6 +48,9 @@ export default function SettingsView() {
           </SettingsRow>
           <SettingsRow label="Editor font size">
             <FontSizeStepper />
+          </SettingsRow>
+          <SettingsRow label="Navigation" layout="stacked">
+            <NavPicker />
           </SettingsRow>
         </SettingsGroup>
 

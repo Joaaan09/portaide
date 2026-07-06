@@ -126,12 +126,18 @@ export type ChatItem = UserChatItem | AssistantChatItem
 
 /** Una conversación = una pestaña de la cabecera del chat */
 export interface ChatSession {
-  /** id local de la pestaña (o el id del server si hay persistencia). */
+  /** id (UUID) compartido con el server desde el nacimiento (el PATCH upsert lo materializa). */
   id: string
   name: string
   items: ChatItem[]
   /** session_id de Claude para reanudar (`resume`); null hasta el 1er turno. */
   claudeSessionId?: string
-  /** true mientras un turno de ESTA conversación está en curso. */
+  /** true mientras un turno de ESTA conversación está en curso (o en cola). */
   streaming?: boolean
+  /** nº de mensajes en cola (escritos mientras trabajaba); 0/undefined = ninguno. */
+  queued?: number
+  /** true = es una pestaña abierta (visible en la tira); false/undefined = solo historial. */
+  open?: boolean
+  /** true una vez el hilo (items) se ha rehidratado desde el server (lazy). */
+  hydrated?: boolean
 }

@@ -2,6 +2,7 @@
 // punto de estado (verde = conectada, rojo = error/cerrada, tenue = conectando)
 // + botón `+` para abrir otra. Cada pestaña puede cerrarse (mata su pty) cuando
 // hay más de una.
+import NavMenuButton from '../../components/NavMenuButton/NavMenuButton'
 import type { ConnStatus } from './TerminalPane'
 import styles from './TerminalView.module.css'
 
@@ -37,6 +38,7 @@ export default function TerminalTabs({
 
   return (
     <header className={styles.bar}>
+      <NavMenuButton />
       <ul className={styles.tabs} aria-label="Terminales">
         {tabs.map((tab) => {
           const isActive = tab.id === activeId

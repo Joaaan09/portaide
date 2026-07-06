@@ -4,6 +4,7 @@
 import { useState } from 'react'
 import type { AssistantBlock, AssistantChatItem, ThinkingBlock, UserEditDecision } from './types'
 import { BashCard, EditCard, GenericToolCard, ReadCard } from './ToolCards'
+import Markdown from './Markdown'
 import styles from './AssistantMessage.module.css'
 
 interface AssistantMessageProps {
@@ -51,11 +52,7 @@ function renderBlock(
     case 'tool':
       return <GenericToolCard key={block.id} block={block} onDecide={onDecide} />
     case 'text':
-      return (
-        <p key={index} className={styles.text}>
-          {block.text}
-        </p>
-      )
+      return <Markdown key={index}>{block.text}</Markdown>
   }
 }
 

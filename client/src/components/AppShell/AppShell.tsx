@@ -1,6 +1,7 @@
-// AppShell — marco de la app (DESIGN.md §5): columna única a 100dvh con
-// overflow oculto (el scroll vive dentro del <main> de cada vista), glow
-// radial de acento arriba-centro y conmutación de la vista activa.
+// AppShell — marco de la app (DESIGN.md §5): columna única anclada al viewport
+// (`position: fixed; inset: 0`, ver .module.css) con overflow oculto (el scroll
+// vive dentro del <main> de cada vista), glow radial de acento arriba-centro y
+// conmutación de la vista activa.
 import type { ComponentType } from 'react'
 import { useNavigation, type ViewId } from '../../navigation/NavigationProvider'
 import FilesView from '../../views/Files/FilesView'

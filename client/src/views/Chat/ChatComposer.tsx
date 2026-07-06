@@ -4,7 +4,13 @@
 // (modelo real + permission mode con Plan + slider de esfuerzo), cableados al
 // puente. El panel se colapsa para mantener el pie limpio a una mano en móvil;
 // cerrado muestra un resumen (modelo · permiso · esfuerzo) en mono.
-import { useRef, useState, type FormEvent, type KeyboardEvent, type PointerEvent } from 'react'
+import {
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+  type PointerEvent,
+} from 'react'
 import type { ChatEffortSetting, ChatPermissionMode } from './types'
 import styles from './ChatComposer.module.css'
 

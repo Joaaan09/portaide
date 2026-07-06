@@ -118,6 +118,24 @@
   transform: scale(0.92);
 }
 
+/* Botón de historial: mismo chasis que .add, con icono de reloj (SVG token-color).
+   --dim en reposo, --accent al interactuar (DESIGN.md §6 / §6.2). */
+.history {
+  color: var(--dim);
+  transition:
+    color 0.15s ease,
+    transform 0.16s ease-out;
+}
+
+.history:hover,
+.history:active {
+  color: var(--accent);
+}
+
+.history svg {
+  display: block;
+}
+
 /* Foco visible por teclado (DESIGN.md §12); hacia dentro para no recortarse con el overflow */
 .tab:focus-visible,
 .tabClose:focus-visible,

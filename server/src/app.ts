@@ -17,7 +17,9 @@ export function createApp(): express.Express {
   // que req.ip (rate-limit) y `secure` reflejen la conexión real del cliente.
   app.set('trust proxy', 1);
 
-  app.use(express.json());
+  // 5mb: el PATCH de sesiones de chat manda el HILO completo (mensajes +
+  // tool-use cards con diffs), que supera de largo el límite por defecto (100kb).
+  app.use(express.json({ limit: '5mb' }));
   app.use(cookieParser());
 
   // --- Orden de montaje (CRÍTICO) -----------------------------------------

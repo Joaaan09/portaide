@@ -1,0 +1,158 @@
+/* NavDrawer — panel lateral + scrim (DESIGN.md §5/§11/§13b). Superficie translúcida
+   tokenizada sobre --surface; los rgba(0,0,0,…) de sombra/scrim son los neutros
+   sancionados en DESIGN §4 (invariantes al tema). */
+
+.root {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+}
+
+.scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  animation: drawerScrim 0.18s ease;
+}
+
+.panel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: min(78vw, 300px);
+  display: flex;
+  flex-direction: column;
+  padding-top: calc(env(safe-area-inset-top, 0px) + 14px);
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 14px);
+  padding-left: env(safe-area-inset-left, 0px);
+  background: var(--surface);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(24px);
+  border-right: 1px solid var(--border);
+  box-shadow:
+    0 16px 44px rgba(0, 0, 0, 0.6),
+    0 0 30px var(--glow);
+  animation: drawerSlide 0.22s var(--ease-out-strong);
+}
+
+.head {
+  padding: 6px 18px 14px;
+}
+
+.wordmark {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: 0.02em;
+  color: var(--text);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 10px;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 0;
+  border-left: 2px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--dim);
+  font-family: inherit;
+  font-size: 15px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.item:hover {
+  background: var(--surface2);
+  color: var(--text);
+}
+
+.item:active {
+  transform: scale(0.99);
+}
+
+.itemActive {
+  background: var(--surface2);
+  border-left-color: var(--accent);
+  color: var(--accent);
+}
+
+.itemIcon {
+  width: 26px;
+  text-align: center;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 600;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.itemLabel {
+  font-weight: 500;
+}
+
+.itemActive .itemLabel {
+  font-weight: 600;
+}
+
+.item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@keyframes drawerSlide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes drawerScrim {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes drawerFade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel {
+    animation: drawerFade 0.15s ease;
+  }
+  .scrim {
+    animation: drawerFade 0.15s ease;
+  }
+  .item {
+    transition: none;
+  }
+  .item:active {
+    transform: none;
+  }
+}

@@ -1,0 +1,185 @@
+/* Markdown del chat — estilos por tokens (DESIGN.md §6.1).
+   Regla dura: cero colores literales, solo tokens --*. Todo lo monoespaciado
+   (código inline y bloques) en JetBrains Mono. Mobile-first: los contenedores
+   anchos (pre, table) hacen scroll horizontal propio, nunca la página. */
+
+.md {
+  font-size: 13.5px;
+  line-height: 20px;
+  color: var(--text);
+  overflow-wrap: break-word;
+}
+
+/* El primer/último hijo no aporta margen exterior: el ritmo entre bloques del
+   mensaje lo marca el gap del contenedor (.message), no el margen del Markdown. */
+.md > :first-child {
+  margin-top: 0;
+}
+.md > :last-child {
+  margin-bottom: 0;
+}
+
+/* ---------- Párrafos ---------- */
+.md p {
+  margin: 0 0 10px;
+}
+
+/* ---------- Encabezados ---------- */
+.md h1,
+.md h2,
+.md h3,
+.md h4,
+.md h5,
+.md h6 {
+  margin: 18px 0 8px;
+  line-height: 1.3;
+  font-weight: 600;
+  color: var(--text);
+}
+.md h1 {
+  font-size: 19px;
+}
+.md h2 {
+  font-size: 17px;
+}
+.md h3 {
+  font-size: 15px;
+}
+.md h4 {
+  font-size: 13.5px;
+}
+.md h5,
+.md h6 {
+  font-size: 12.5px;
+  color: var(--dim);
+}
+
+/* ---------- Listas ---------- */
+.md ul,
+.md ol {
+  margin: 0 0 10px;
+  padding-left: 22px;
+}
+.md li {
+  margin: 3px 0;
+}
+.md li::marker {
+  color: var(--faint);
+}
+.md ul ul,
+.md ul ol,
+.md ol ul,
+.md ol ol {
+  margin: 3px 0;
+}
+
+/* Listas de tareas (GFM): sin viñeta y con checkbox en color de acento. */
+.md li:has(> input[type='checkbox']) {
+  list-style: none;
+  margin-left: -18px;
+}
+.md li input[type='checkbox'] {
+  margin-right: 7px;
+  accent-color: var(--accent);
+}
+
+/* ---------- Código inline ---------- */
+.md :not(pre) > code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.86em;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  overflow-wrap: break-word;
+}
+
+/* ---------- Bloque de código ---------- */
+.md pre {
+  margin: 0 0 10px;
+  padding: 11px 12px;
+  border-radius: 9px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.md pre code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--text);
+  background: none;
+  border: 0;
+  padding: 0;
+  white-space: pre;
+}
+
+/* ---------- Cita ---------- */
+.md blockquote {
+  margin: 0 0 10px;
+  padding: 2px 0 2px 12px;
+  border-left: 2px solid var(--border);
+  color: var(--dim);
+}
+.md blockquote > :last-child {
+  margin-bottom: 0;
+}
+
+/* ---------- Enlaces ---------- */
+.md a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* ---------- Énfasis ---------- */
+.md strong {
+  font-weight: 600;
+  color: var(--text);
+}
+.md em {
+  font-style: italic;
+}
+.md del {
+  color: var(--faint);
+}
+
+/* ---------- Regla horizontal ---------- */
+.md hr {
+  margin: 14px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+/* ---------- Tablas (GFM) ---------- */
+/* display:block + width:max-content permite scroll horizontal propio en móvil
+   sin desbordar la página. */
+.md table {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  -webkit-overflow-scrolling: touch;
+}
+.md th,
+.md td {
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  text-align: left;
+}
+.md th {
+  background: var(--surface2);
+  font-weight: 600;
+}
+
+/* ---------- Imágenes (raras en el chat, pero contenidas) ---------- */
+.md img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+}

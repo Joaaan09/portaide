@@ -2,7 +2,9 @@
 
 .composer {
   flex: none;
-  padding: 8px 12px 10px;
+  /* Anclado al borde real: la superficie rellena la safe-area inferior y, en modo
+     barra inferior, reserva su altura (--nav-inset) para quedar por encima (§13b). */
+  padding: 8px 12px calc(10px + var(--nav-inset, 0px) + env(safe-area-inset-bottom, 0px));
   border-top: 1px solid var(--border);
   background: var(--surface);
 }

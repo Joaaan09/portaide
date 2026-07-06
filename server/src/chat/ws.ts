@@ -1,17 +1,28 @@
 // Handler de una conexión WebSocket de chat (/ws/chat). El upgrade ya pasó el
-// gate de autenticación (CLAUDE.md §11) antes de llegar aquí. Este módulo lleva
-// el estado por-conexión (modelo y permission mode actuales, turno vivo) y
-// enruta los mensajes del cliente al puente del Agent SDK (bridge.ts).
+// gate de autenticación (CLAUDE.md §11) antes de llegar aquí.
 //
-// Un turno a la vez por conexión: el stream server→cliente no lleva sessionId,
-// así que el cliente atribuye los eventos al turno en curso. El `cwd` y el
-// `sessionId` (claudeSessionId a reanudar) viajan en cada `user_message`.
+// Este WS es un TRANSPORTE MULTIPLEXADO (decisiones.md · "Chat en segundo plano"):
+// cada trama lleva `sessionId` (el UUID de pestaña) y una misma conexión atiende
+// N sesiones a la vez. El estado vivo del turno NO vive aquí, vive en el
+// SessionRuntime (runtime.ts), que es independiente del socket. Por eso:
+//   - Cerrar el socket solo DESUSCRIBE (no aborta ningún turno).
+//   - Se pueden tener varias conversaciones trabajando en paralelo.
+//   - Escribir mientras trabaja ENCOLA (lo gestiona el runtime).
+//
+// Protocolo (cliente→server), todas con `sessionId`:
+//   attach{sessionId}                        → snapshot + suscripción a eventos vivos
+//   detach{sessionId}                        → desuscripción (NO para el turno)
+//   message{sessionId,localId,text,cwd?,model?,mode?,effort?,workflows?} → arranca/encola
+//   stop{sessionId}                          → aborta el turno vivo + vacía cola
+//   permission{sessionId,requestId,decision,updatedInput?} → resuelve un Approve/Reject (modo Ask)
+//   set_model{sessionId,model} · set_permission_mode{sessionId,mode} → cambio en caliente
 import fs from 'node:fs';
-import type { IncomingMessage } from 'node:http';
+import type { IncomingMessage as HttpIncomingMessage } from 'node:http';
 import type { WebSocket } from 'ws';
 import type { WsSession } from '../auth/ws.js';
 import { FS_ROOT, resolveSafe } from '../fs/paths.js';
-import { runChatTurn, type ChatEffort, type ChatPermissionMode, type ChatTurn } from './bridge.js';
+import type { ChatEffort, ChatPermissionMode } from './bridge.js';
+import { runtimeManager } from './runtime.js';
 
 const VALID_MODES: ReadonlySet<ChatPermissionMode> = new Set([
   'default',
@@ -20,13 +31,7 @@ const VALID_MODES: ReadonlySet<ChatPermissionMode> = new Set([
   'plan',
 ]);
 
-const VALID_EFFORT: ReadonlySet<ChatEffort> = new Set([
-  'low',
-  'medium',
-  'high',
-  'xhigh',
-  'max',
-]);
+const VALID_EFFORT: ReadonlySet<ChatEffort> = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
 
 /** Valida el effort del cliente; nivel desconocido (incl. 'auto') → undefined (default). */
 function safeEffort(requested: unknown): ChatEffort | undefined {
@@ -47,11 +52,23 @@ function safeCwd(requested: unknown): string {
   return FS_ROOT;
 }
 
+/**
+ * Modo de permiso por defecto = bypassPermissions (decisión del usuario, 2026-07-03):
+ * "sin permisos" para que el trabajo en 2º plano no se bloquee esperando aprobación.
+ * El Approve/Reject (modo 'default'/Ask) sigue disponible si el cliente lo pide.
+ */
+function safeMode(requested: unknown): ChatPermissionMode {
+  return typeof requested === 'string' && VALID_MODES.has(requested as ChatPermissionMode)
+    ? (requested as ChatPermissionMode)
+    : 'bypassPermissions';
+}
+
 interface ClientMessage {
   type?: unknown;
+  sessionId?: unknown;
+  localId?: unknown;
   text?: unknown;
   cwd?: unknown;
-  sessionId?: unknown;
   requestId?: unknown;
   decision?: unknown;
   updatedInput?: unknown;
@@ -63,18 +80,13 @@ interface ClientMessage {
 
 export function handleChatConnection(
   ws: WebSocket,
-  _req: IncomingMessage,
+  _req: HttpIncomingMessage,
   _session: WsSession
 ): void {
-  // Estado por-conexión: se aplican al ARRANCAR el próximo turno; si hay turno
-  // vivo, también se cambian en caliente vía el handle.
-  let currentModel: string | undefined;
-  let currentMode: ChatPermissionMode = 'default';
-  let turn: ChatTurn | null = null;
+  // Sesiones a las que ESTE socket está suscrito (para desuscribir al cerrar).
+  const attached = new Set<string>();
 
-  const send = (msg: unknown): void => {
-    if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
-  };
+  const asId = (v: unknown): string | null => (typeof v === 'string' && v ? v : null);
 
   ws.on('message', (raw) => {
     let msg: ClientMessage;
@@ -84,74 +96,87 @@ export function handleChatConnection(
       return; // ignora tramas no-JSON
     }
 
+    const sessionId = asId(msg.sessionId);
+    if (!sessionId) return; // todas las tramas del protocolo nuevo llevan sessionId
+
     switch (msg.type) {
-      case 'user_message': {
-        if (typeof msg.text !== 'string' || msg.text.trim().length === 0) return;
-        if (turn) {
-          // Un turno a la vez: el cliente deshabilita el envío mientras streamea.
-          send({ type: 'error', message: 'Ya hay un turno en curso' });
-          return;
-        }
-        const cwd = safeCwd(msg.cwd);
-        const resumeSessionId = typeof msg.sessionId === 'string' ? msg.sessionId : undefined;
-        // effort viaja por-mensaje (no es estado de conexión): se lee aquí y se
-        // pasa al turno. Ausente o 'auto' → undefined (default del engine).
-        const effort = safeEffort(msg.effort);
-        // workflows (modo "Ultracode"): activa la herramienta de workflows
-        // multiagente del SDK para este turno. Ortogonal al effort.
-        const enableWorkflows = msg.workflows === true;
-        turn = runChatTurn({
-          ws,
-          cwd,
-          userText: msg.text,
-          resumeSessionId,
-          model: currentModel,
-          permissionMode: currentMode,
-          effort,
-          enableWorkflows,
-          onSession: () => {
-            /* el cliente guarda el sessionId; aquí no hace falta retenerlo */
-          },
-          onDone: () => {
-            turn = null;
-          },
-        });
+      case 'attach': {
+        attached.add(sessionId);
+        void runtimeManager.get(sessionId).attach(ws);
         return;
       }
-      case 'permission_decision': {
+
+      case 'detach': {
+        attached.delete(sessionId);
+        runtimeManager.get(sessionId).detach(ws);
+        return;
+      }
+
+      case 'message': {
+        if (typeof msg.text !== 'string' || msg.text.trim().length === 0) return;
+        const localId = asId(msg.localId) ?? `${sessionId}-${Date.now()}`;
+        const incoming = {
+          localId,
+          text: msg.text,
+          cwd: safeCwd(msg.cwd),
+          model: typeof msg.model === 'string' && msg.model ? msg.model : undefined,
+          permissionMode: safeMode(msg.mode),
+          effort: safeEffort(msg.effort),
+          enableWorkflows: msg.workflows === true,
+        };
+        const rt = runtimeManager.get(sessionId);
+        // Auto-attach defensivo: si el socket aún no estaba suscrito, primero
+        // suscribe (para recibir el stream) y LUEGO encola — en ese orden, para
+        // que el snapshot no incluya la burbuja nueva y no se duplique.
+        void (async () => {
+          if (!attached.has(sessionId)) {
+            attached.add(sessionId);
+            await rt.attach(ws);
+          }
+          await rt.enqueueMessage(incoming);
+        })();
+        return;
+      }
+
+      case 'stop': {
+        runtimeManager.get(sessionId).stop();
+        return;
+      }
+
+      case 'permission': {
         if (typeof msg.requestId !== 'string') return;
         const decision = msg.decision === 'allow' ? 'allow' : 'deny';
         const updatedInput =
           msg.updatedInput && typeof msg.updatedInput === 'object'
             ? (msg.updatedInput as Record<string, unknown>)
             : undefined;
-        turn?.resolvePermission(msg.requestId, decision, updatedInput);
+        runtimeManager.get(sessionId).resolvePermission(msg.requestId, decision, updatedInput);
         return;
       }
+
       case 'set_model': {
-        currentModel = typeof msg.model === 'string' && msg.model ? msg.model : undefined;
-        turn?.setModel(currentModel);
+        const model = typeof msg.model === 'string' && msg.model ? msg.model : undefined;
+        runtimeManager.get(sessionId).setModel(model);
         return;
       }
+
       case 'set_permission_mode': {
         if (typeof msg.mode === 'string' && VALID_MODES.has(msg.mode as ChatPermissionMode)) {
-          currentMode = msg.mode as ChatPermissionMode;
-          turn?.setPermissionMode(currentMode);
+          runtimeManager.get(sessionId).setPermissionMode(msg.mode as ChatPermissionMode);
         }
         return;
       }
-      case 'interrupt': {
-        turn?.interrupt();
-        return;
-      }
+
       default:
         return;
     }
   });
 
+  // Cierre/err del socket: SOLO desuscribe de sus sesiones. NUNCA aborta el turno
+  // (ese es justo el bug que arreglamos: el turno sigue vivo en el runtime).
   const cleanup = (): void => {
-    turn?.interrupt();
-    turn = null;
+    for (const id of attached) runtimeManager.get(id).detach(ws);
+    attached.clear();
   };
 
   ws.on('close', cleanup);

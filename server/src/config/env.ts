@@ -45,9 +45,19 @@ const cookieSecureEnv = process.env.COOKIE_SECURE;
 const cookieSecure =
   cookieSecureEnv !== undefined ? cookieSecureEnv === 'true' : isProduction;
 
+/** Parsea CHAT_MAX_CONCURRENT_TURNS: entero ≥0 (0 = sin límite); default 3.
+ *  Tope defensivo de concurrencia: este VPS se congela por saturación de CPU
+ *  cuando corren varias sesiones de Claude a la vez (ver decisiones.md). */
+function parseMaxConcurrent(raw: string | undefined): number {
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 0 ? n : 3;
+}
+
 export const env = {
   /** Puerto HTTP del backend. */
   port: Number(process.env.PORT) || 4100,
+  /** Máximo de turnos de chat corriendo simultáneamente (0 = sin límite; default 3). */
+  chatMaxConcurrentTurns: parseMaxConcurrent(process.env.CHAT_MAX_CONCURRENT_TURNS),
   /** Entorno de ejecución. */
   nodeEnv,
   /** Ruta del fichero SQLite (única persistencia). Default: ./data/portaide.db

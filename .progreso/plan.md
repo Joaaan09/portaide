@@ -50,3 +50,21 @@
 - [x] Imagen backend `node:20-slim` con node-pty compilado, `claude` global + `clauded`, git/bash, mounts.
 - [x] `docker compose up -d --build` desplegado y verificado (SPA + health + login por nginx→backend).
 - [x] Volumen de Mongo reseteado para que inicialice con auth (el `up` de scaffolding lo creó sin auth).
+
+## Fase 4 — Chat en segundo plano (multi-sesión + cola + push)
+
+> Arquitectura pinneada en `decisiones.md` (2026-07-03 · "Chat en segundo plano: `SessionRuntime`").
+> Decisiones del usuario: concurrencia knob (default 3, 0=ilimitado) · default `bypassPermissions` · todo de una.
+> **Reafirmada por el usuario (2026-07-06)** como los 4 síntomas a resolver (1 sola conversación a la vez ·
+> no poder escribir mientras trabaja · el turno muere al apagar pantalla/salir · faltan notificaciones):
+> sigue siendo la **siguiente feature grande**, aún sin empezar.
+
+- [ ] **A. Backbone server**: `SessionRuntime` (turno desacoplado del WS, cola, concurrencia `CHAT_MAX_CONCURRENT_TURNS`),
+      `bridge.ts` emitiendo a un sink en vez de al `ws`, WS multiplexado (`attach/detach/message/stop`, snapshot-on-attach,
+      broadcast) en `ws.ts`+`index.ts`. Default permission mode → bypass. Persistencia server-side del hilo vivo.
+- [ ] **B. Cliente**: `chatStore.ts` al protocolo nuevo (estado de turno por sesión, sin `pendingLocalId` global,
+      re-attach + snapshot al reconectar, enviar-mientras-trabaja = encolar, N sesiones en streaming a la vez).
+- [ ] **C. Push**: `web-push` + VAPID + tabla `push_subscriptions`; `sw.js` (push + notificationclick); registro SW +
+      toggle "Notificaciones" en Settings. Disparo al terminar/error sin subscriber activo. (Caveat iOS PWA.)
+- [ ] **Verificación**: typecheck + build (client+server) verdes; smoke del ciclo (attach→message→cerrar socket→
+      el turno sigue→reattach recupera→push). Actualizar `estado.md`/`log.md`.

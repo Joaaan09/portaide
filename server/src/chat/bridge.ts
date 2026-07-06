@@ -17,7 +17,6 @@ import {
   type Query,
   type SDKMessage,
 } from '@anthropic-ai/claude-agent-sdk';
-import type { WebSocket } from 'ws';
 
 /** Modos de permiso que expone la UI (subset de PermissionMode del SDK). */
 export type ChatPermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
@@ -26,7 +25,7 @@ export type ChatPermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions'
 export type ChatEffort = EffortLevel;
 
 /** Mensajes server→cliente del protocolo de UI (ver ws.ts / useChatSession.ts). */
-type OutMsg =
+export type OutMsg =
   | { type: 'session'; sessionId: string }
   | { type: 'thinking'; delta: string }
   | { type: 'thinking_done' }
@@ -40,7 +39,10 @@ type OutMsg =
 
 /** Parámetros para arrancar un turno. `cwd` ya viene validado bajo FS_ROOT. */
 export interface RunTurnParams {
-  ws: WebSocket;
+  /** Sumidero de eventos del turno. Lo conecta el SessionRuntime (runtime.ts):
+   *  el turno YA NO escribe a un WebSocket, emite eventos y el runtime decide
+   *  qué hacer con ellos (log + broadcast a los subscribers). */
+  emit: (msg: OutMsg) => void;
   cwd: string;
   userText: string;
   /** claudeSessionId a reanudar (undefined = turno inicial → sesión nueva). */
@@ -118,11 +120,11 @@ function flattenContent(content: unknown): string {
  * `onDone`.
  */
 export function runChatTurn(params: RunTurnParams): ChatTurn {
-  const { ws, cwd, userText, resumeSessionId, model, permissionMode, effort, enableWorkflows } =
+  const { emit, cwd, userText, resumeSessionId, model, permissionMode, effort, enableWorkflows } =
     params;
 
   const send = (msg: OutMsg): void => {
-    if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
+    emit(msg);
   };
 
   const abort = new AbortController();

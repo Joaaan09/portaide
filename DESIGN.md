@@ -13,7 +13,7 @@
 - **Nada de tema claro** en v1: los 3 temas son oscuros. (La guía de marca muestra el icono sobre
   blanco, pero la **app** es oscura.)
 - **Nada de sombras pesadas** para separar UI: se separa con **bordes de 1px `--border`**. Sombra
-  pesada solo en elevación real (isla de navegación, marco del teléfono).
+  pesada solo en elevación real (drawer/barra inferior de navegación, marco del teléfono).
 - **Nada de gradientes decorativos** en el chrome. El único degradado permitido es el **glow radial
   de acento** (fondo) y algún fondo de "home screen" en la marca.
 - **Nada de rejillas simétricas de cards** ni relleno tipo dashboard: esto es un IDE, es **denso,
@@ -24,7 +24,7 @@
 ## 1. Principios
 
 - **Mobile-first, una mano.** Todo pensado para vertical, pulgar y pantallas pequeñas. Los destinos
-  se alcanzan desde abajo (isla dinámica), no desde una barra superior.
+  se alcanzan con una mano: drawer `☰` (por defecto) o barra inferior (alternativa), elegibles en Settings (§5).
 - **El código es el héroe.** Todo lo monoespaciado (código, terminal, rutas, diffs, labels técnicos)
   va en **JetBrains Mono**. La UI de alrededor es sobria para que el código destaque.
 - **Terminal / violeta.** Identidad "prompt de terminal" en morado. El cursor que parpadea (`▮`) y
@@ -58,7 +58,7 @@ tema activo (se setean como variables CSS en la raíz de la app / marco).
 | `--faint` | texto terciario / números de línea / placeholders |
 | `--accent` | acento de marca (violeta): activo, cursor, botones primarios, keyword |
 | `--accent2` | acento secundario (bordes de foco fuerte, split) |
-| `--glow` | glow radial de acento (fondo, sombras de la isla) |
+| `--glow` | glow radial de acento (fondo, sombras del drawer/barra de nav) |
 | `--on-accent` | texto/glifos **encima** de `--accent` (botones Approve/Send, burbuja de usuario, segmented activo, knob del toggle, badge del proyecto) |
 | `--green` `--red` `--yellow` `--blue` `--orange` | estados, git y **syntax highlighting** |
 
@@ -119,9 +119,9 @@ tema activo (se setean como variables CSS en la raíz de la app / marco).
 ## 4. Espaciado, radios, bordes, elevación, glow
 
 - **Bordes**: 1px `--border` para todo divisor/card. Foco fuerte: 2px `--accent`/`--accent2`.
-- **Radios**: inputs/cards 10–14px · chips/pills 7–20px · botones 8–11px · isla de nav 24–28px ·
+- **Radios**: inputs/cards 10–14px · chips/pills 7–20px · botones 8–11px · ítems de nav (drawer) 9–10px ·
   marco del teléfono 50px · badges de archivo 4–7px.
-- **Elevación**: por defecto **ninguna** (líneas). Sombra real solo en: isla de navegación
+- **Elevación**: por defecto **ninguna** (líneas). Sombra real solo en: drawer/barra inferior de navegación
   (`0 16px 44px rgba(0,0,0,.6), 0 0 30px var(--glow)`) y marco del teléfono.
 - **Glow de acento**: radial `var(--glow)` arriba-centro del viewport (`opacity` togglable en Settings).
   Es el único "efecto" ambiental; sutil, nunca sobre texto.
@@ -131,28 +131,39 @@ tema activo (se setean como variables CSS en la raíz de la app / marco).
 - **Marco**: columna única `100dvh`, `overflow:hidden`; el scroll vive en el `<main>` de cada vista
   (patrón app-shell, evita barras flotantes en PWA iOS). Fondo `--bg` con el glow por encima.
 - **Status bar** (solo mockup/preview): hora, dynamic island, señal/batería. En la PWA real la pinta el SO.
-- **Navegación = "isla dinámica" flotante** abajo-centro, `position: fixed` (bottom `20px` +
-  `env(safe-area-inset-bottom)`), `pointer-events` solo en la píldora. El cuerpo de la app reserva
-  `56px` inferiores (+ safe-area) para que el contenido no quede debajo.
-  - **Cerrada**: píldora translúcida = icono de acento de la vista activa + su label + "hamburguesa"
-    de 2 líneas (`--faint`). Fondo `color-mix(in srgb, var(--surface) 72%, transparent)` +
-    `backdrop-filter: blur(22px)`, borde 1px `--border`, radio `24px`, sombra
-    `0 10px 34px rgba(0,0,0,.55), 0 0 22px var(--glow)` (variante ligera de §4). Un tap la **expande**.
-  - **Abierta**: fila con las **5 pestañas** (icono mono 15px + label 9.5px; padding `8px 13px`,
-    radio `17px`), la activa con fondo `--surface2`, color `--accent` y glow `0 0 16px var(--glow)`.
-    Contenedor: fondo `color-mix(in srgb, var(--surface) 86%, transparent)` + `blur(26px)`, radio
-    `28px`, sombra de §4. Detrás, un **scrim** que cierra al tocar: `rgba(0,0,0,.30)` +
-    `backdrop-filter: blur(2px)`.
+- **Navegación = dos modos intercambiables** (elegibles en Settings → Appearance; preferencia `navMode`
+  persistida, §13b). **App edge-to-edge**: el `.viewport` **no reserva banda inferior** por sí mismo; la
+  holgura inferior de cada superficie se calcula con la var **`--nav-inset`** (`0` en modo drawer, alto de
+  la barra en modo bottombar) + `env(safe-area-inset-bottom)`. La safe-area inferior la asume cada
+  superficie de fondo (el composer del Chat rellena su propia safe-area; las listas scrollables reservan
+  su holgura con `--nav-inset`).
+  - **(a) Drawer con hamburguesa `☰` (por defecto)**: un botón `☰` en la **cabecera de cada vista** (primer
+    elemento a la izquierda) abre un **panel lateral** que desliza desde la izquierda. Ancho `min(78vw, 300px)`,
+    alto completo, superficie translúcida `color-mix(in srgb, var(--surface) 92%, transparent)` +
+    `backdrop-filter: blur(...)`, borde derecho 1px `--border`, sombra de §4. Cabecera con wordmark "PortaIDE"
+    pequeño; debajo, la **lista de los 5 destinos** (icono mono + label); el activo con borde/acento izquierdo,
+    texto `--accent` y fondo sutil. Al tocar un destino: navega y cierra el drawer. Detrás, un **scrim**
+    (`rgba(0,0,0,.30)` + `blur(2px)`) que cierra al tocar. Accesible: `role="dialog"`, `aria-modal`,
+    focus-trap, cierre con `Esc`, foco inicial al abrir y devolución al cerrar. En este modo el `☰` aparece
+    en las cabeceras y **no** hay barra inferior (`--nav-inset: 0`).
+  - **(b) Barra inferior fija (alternativa)**: barra `position: fixed` al borde inferior real, alto
+    `var(--bottombar-height)` (`56px`) + `padding-bottom: env(safe-area-inset-bottom)`, superficie translúcida
+    + `backdrop-filter`, borde superior 1px `--border`, sombra superior sutil. **5 ítems** (icono arriba +
+    label pequeño): el activo en `--accent` (indicador superior sutil opcional), el resto en `--dim`; tap →
+    navega. Persistente (sin animación de entrada). En este modo el `☰` **se auto-oculta** de las cabeceras y
+    `--nav-inset: var(--bottombar-height)` para que el contenido reserve su altura.
   - Iconos: Files `▤` · Editor `{ }` · Chat `✦` · Terminal `>_` · Settings `⚙`.
-  - Animaciones: `islandOpen` (.22s `cubic-bezier(.2,.9,.3,1.2)`) y `islandScrim` (.18s). Ver §11.
-  - Nota: el mockup congela el fondo de la isla en `rgba(17,17,25,…)` (surface de Midnight) para los
-    3 temas; el sistema lo tokeniza con `color-mix` sobre `--surface` para que siga al tema activo.
+  - Animaciones: drawer slide-in lateral (~200–240ms `--ease-out-strong`) + scrim fade (~180ms); barra
+    inferior sin animación de entrada (transición de color del ítem activo ~150ms). Ver §11 y §13b.
+  - Nota: la superficie translúcida se tokeniza con `color-mix` sobre `--surface` para seguir al tema activo
+    en los 3 temas. (**Divergencia intencionada del mockup** —que pinta una barra abajo-centro— hacia drawer
+    `☰` + barra inferior intercambiables, a petición del usuario; ver decisiones.md, 2026-07-03.)
 
 ## 6. Vista Chat (Claude Code) — la estrella
 
 Réplica de Claude Code en VS Code (ver [CLAUDE.md](CLAUDE.md) §4). Estructura:
 
-- **Cabecera**: pestañas de chats (icono `✦`, activa con subrayado `--accent` y fondo `--surface2`) + `+` para nuevo chat.
+- **Cabecera**: pestañas de chats (icono `✦`, activa con subrayado `--accent` y fondo `--surface2`) + `+` para nuevo chat + botón **historial** (`🕘`/reloj) que abre el panel de conversaciones (§6.2).
 - **Hilo** (scroll): burbujas y bloques con `gap` generoso.
   - **Usuario**: alineado a la derecha, fondo `--accent`, texto `--on-accent`, radio `15px 15px 4px 15px`, máx ~82%.
   - **Asistente**: alineado a la izquierda, con cabecerita (`✦` en cuadradito + "Claude Code" en `--dim`).
@@ -164,11 +175,14 @@ Réplica de Claude Code en VS Code (ver [CLAUDE.md](CLAUDE.md) §4). Estructura:
         (§3) + **botones Approve (`--accent`) / Reject (`--surface2`)**; tras decidir, muestra estado
         ("✓ Applied", "✕ Rejected", "✓ Auto-applied").
       - **Bash**: card fondo `#000` con cabecera `$ comando` (verde) + salida mono (verde si PASS/✓).
-    - Texto final del mensaje en `--text`.
+    - Texto final del mensaje: **Markdown renderizado** (no texto plano), estilos por tokens (§6.1).
   - **Typing**: tres puntos `--accent` con animación `dot`.
-- **Input** (fijo abajo): fila de chips de contexto (`@archivo`, `+ context`), caja `--bg` con borde,
-  placeholder "Ask Claude to build, fix, refactor…", botón **↑** (acento cuando hay texto). Debajo, el
-  **pie de controles**:
+- **Input** (anclado al borde inferior real): fila de chips de contexto (`@archivo`, `+ context`), caja
+  `--bg` con borde, placeholder "Ask Claude to build, fix, refactor…", botón **↑** (acento cuando hay
+  texto). El composer ocupa **todo el ancho** y se ancla al **borde inferior real** de la pantalla: su
+  superficie rellena la safe-area inferior (el contenido queda por encima del home-indicator) y suma
+  `--nav-inset`: en modo drawer llega al fondo real, en modo barra inferior reserva la altura de la barra
+  para quedar por encima (§5/§13b). Debajo, el **pie de controles**:
   - **Resumen colapsado** (por defecto): fila-botón con un icono de ajustes (`--dim`) + resumen en mono
     `--faint` `modelo · permiso · esfuerzo` (p.ej. `Opus 4.8 · Ask · Auto`) + chevron. Un tap despliega
     el panel **hacia arriba** (el composer está anclado abajo); el chevron gira 180°. Mantiene el pie
@@ -183,6 +197,70 @@ Réplica de Claude Code en VS Code (ver [CLAUDE.md](CLAUDE.md) §4). Estructura:
       del engine); los demás viajan como `effort` en el `user_message`. `aria-valuetext` con el nivel.
   - Motion (§11): el panel entra con fade+`translateY(4px)` (.18s ease); `prefers-reduced-motion` desactiva
     la animación, el giro del chevron y el rebote del thumb.
+
+### 6.1. Markdown del texto del asistente
+
+El texto final del mensaje del asistente llega en **Markdown** (lo emite el CLI `claude`) y se renderiza,
+no se pinta plano. Implementación: `react-markdown` + `remark-gfm` (GFM: tablas, tachado, autolinks,
+listas de tareas), **sin HTML crudo** (no `rehype-raw`: seguro por defecto) y **sin highlighting por
+lenguaje** en v1 (decisión: peso en móvil; los bloques van monoespaciados sobre superficie, se puede
+subir a highlighting después). Componente: `client/src/views/Chat/Markdown.tsx` (+ `Markdown.module.css`).
+
+Reglas visuales (solo tokens `--*`):
+
+- **Encabezados** `h1..h4` en `--text` con peso 600 y escala decreciente (19/17/15/13.5px); `h5/h6` en `--dim`.
+- **Énfasis**: `strong` peso 600 `--text`, `em` cursiva, `del` (tachado GFM) en `--faint`.
+- **Código inline**: JetBrains Mono, fondo `--surface2`, borde `--border`, radio 5px.
+- **Bloque de código** (`pre`): JetBrains Mono sobre `--surface` con borde `--border`, radio 9px y
+  **scroll horizontal propio** (nunca desborda la página); sin colorear la sintaxis en v1.
+- **Listas**: viñeta/número con `::marker` en `--faint`; **listas de tareas** GFM sin viñeta y checkbox
+  con `accent-color: var(--accent)`.
+- **Cita** (`blockquote`): borde-izquierdo `--border`, texto `--dim`.
+- **Enlaces**: `--accent` subrayado, **abren en pestaña nueva** con `rel="noopener noreferrer"`.
+- **Tablas** GFM: borde `--border`, cabecera con fondo `--surface2`; **scroll horizontal propio** en móvil.
+- **Regla horizontal** (`hr`): línea `--border`.
+- El primer/último hijo no aporta margen exterior: el ritmo entre bloques lo marca el `gap` del contenedor.
+
+### 6.2. Historial de conversaciones + persistencia del hilo
+
+> **Fuente del historial (2026-07-06):** el panel lista las conversaciones **reales del engine** (Claude
+> Code / VS Code) del proyecto abierto — no solo las creadas dentro de PortaIDE. Backend hecho
+> (`GET /api/chat/engine/sessions[?cwd]` → id/`aiTitle`/fecha/rama; `.../:id` → transcript convertido a
+> `LogEvent[]`, repintable + reanudable con `resume`). **La UI de esta sección está pendiente** de migrar
+> el cliente del chat al protocolo `attach`/`snapshot` del SessionRuntime; su diseño visual (cómo se listan
+> las del engine, badges de rama, etc.) se cierra aquí al cablearla.
+
+El chat **persiste el hilo** de cada conversación (no solo el título): al recargar, el chat abierto se
+**rehidrata** (mismas burbujas, thinking, tool-cards) y se puede **seguir escribiendo** (el contexto de
+Claude se retoma con `resume` vía el `claudeSessionId` persistido). Modelo **pestañas ≠ historial**:
+
+- **Pestañas** = conversaciones *abiertas ahora* (`open=1`), tira horizontal como hasta ahora, orden
+  estable por antigüedad. La **`×` de una pestaña la CIERRA** (la saca de la tira), **no la borra**:
+  sigue viva en el historial. La **pestaña activa se persiste** (localStorage) para no saltar de pestaña
+  al recargar.
+- **Historial** = *todas* las conversaciones (abiertas + cerradas). Se abre con el botón `🕘` de la
+  cabecera (§6).
+
+**Panel de historial** (overlay sobre el hilo, no pantalla completa; ancho del contenido de la app):
+
+- Entra con **fade + `translateY`** desde la cabecera (coherente con el panel de controles del composer,
+  §11); `prefers-reduced-motion` lo desactiva. Fondo `--surface` con borde `--border`, radios del sistema.
+- **Cabecera del panel**: título "Conversaciones" (mono `--dim`, uppercase) + botón cerrar (`✕`, `--dim`).
+- **Lista** scrollable; cada fila:
+  - Título en IBM Plex Sans `--text`; si la conversación está **abierta**, punto `--accent` a la izquierda.
+  - Meta en mono `--faint`: fecha relativa (`updatedAt`, p.ej. "hace 2 h").
+  - **Tap en la fila** → abre/activa la conversación (si estaba cerrada, se reabre como pestaña) y cierra
+    el panel.
+  - Acciones por fila: **renombrar** (`✎`, edición inline del título → `PATCH title`) y **borrar**
+    (`🗑`, con **confirmación**; es destructivo y definitivo → `DELETE`).
+  - Objetivos táctiles cómodos (§12); fila ≥44px.
+- **Vacío**: mensaje "Sin conversaciones todavía" en `--faint`.
+
+Persistencia (contrato con el backend): el hilo se guarda como blob JSON (`thread`) por sesión; el cliente
+hace `PATCH /api/chat/sessions/:id` con `{ thread, claudeSessionId }` al cerrar cada turno y al resolver
+aprobaciones, `{ open }` al cerrar/reabrir pestaña y `{ title }` al renombrar. Rehidratación **lazy**: al
+montar se cargan las pestañas abiertas (meta) y el hilo de la activa vía `GET /sessions/:id`; el resto se
+piden al enfocarlas. Detalle técnico en `.progreso/decisiones.md`.
 
 ## 7. Vista Editor
 
@@ -241,8 +319,11 @@ Animaciones del mockup (respétalas; son la firma de interacción):
 - `blink` — cursor de terminal/editor, `1s step-end infinite` (0→48% visible, 49→100% oculto).
 - `fadein` — entrada de vista, `.18s ease` (opacity + `translateY(5px)`).
 - `dot` — typing del chat, `1.2s infinite` con `.2s`/`.4s` de desfase entre los 3 puntos.
-- `islandOpen` — apertura de la isla de nav, `.22s cubic-bezier(.2,.9,.3,1.2)` (rebote sutil).
-- `islandScrim` — fade del scrim, `.18s ease`.
+- **Drawer de navegación** (slide-in lateral, §5/§13b): `translateX(-100%)`→`0` en `~200–240ms` con
+  `--ease-out-strong` (`cubic-bezier(.23,1,.32,1)`) + **scrim fade** `~180ms`. Reduced-motion: sin
+  `transform`, solo fade (o instantáneo).
+- **Barra inferior de navegación** (§5/§13b): persistente, **sin** animación de entrada; solo transición
+  de color del ítem activo `~150ms`.
 - `spin` — spinners (`to { transform: rotate(360deg) }`).
 
 Reglas: transiciones cortas (≤ ~220ms), `ease`/spring suaves, sin animar layout costoso. Respeta
@@ -265,17 +346,34 @@ Reglas: transiciones cortas (≤ ~220ms), `ease`/spring suaves, sin animar layou
 - Pega `brand/head-snippet.html` en el `<head>`. Marco app-shell (§5) para evitar barras flotantes en iOS.
 - **Viewport**: `viewport-fit=cover` + `maximum-scale=1, user-scalable=no` para dar sensación de app y
   evitar el auto-zoom de iOS al enfocar inputs (<16px). El `<main>` de cada vista reserva
-  `env(safe-area-inset-top)` (notch) y la isla el `-bottom`.
+  `env(safe-area-inset-top)` (notch) y cada superficie inferior el `-bottom` (vía `--nav-inset`, §13b).
+- **Anclaje del marco (teclado móvil)**: el shell (`.shell`) es **`position: fixed; inset: 0`** (no `100dvh`
+  en flujo). Motivo: al abrir/cerrar el teclado del móvil el marco **no debe reacomodarse** ni dejar un
+  hueco/espaciado residual abajo; anclado al viewport, el teclado solo se superpone y al cerrarse todo queda
+  en su sitio, con la **barra inferior de nav siempre pegada al borde real**. El scroll vive dentro de cada
+  vista; el pull-to-refresh (píldora fixed) y la nav (drawer/barra, fixed) son hermanos del shell.
 - **Pull-to-refresh**: en standalone, tirar hacia abajo cuando el scroll de la vista activa está arriba
   del todo recarga la app (indicador sobrio con `spin`). No se activa en pestaña de navegador (ya trae el
-  nativo). Solo alrededor del shell; la isla de nav queda fuera del gesto.
+  nativo). Solo alrededor del shell; el drawer y la barra inferior de nav quedan fuera del gesto.
 
-## 13b. Isla de navegación arrastrable (§5) — comportamiento
+## 13b. Navegación — modos drawer/barra inferior (§5)
 
-- La píldora es **reposicionable**: se arrastra con Pointer Events a cualquier punto y **recuerda la
-  posición** (`localStorage: portaide:island:pos`). Se distingue **tap** (abre) de **arrastre** (mueve)
-  por umbral (~8px). Clamp dentro del viewport respetando `env(safe-area-inset-*)`; re-clamp en
-  resize/orientación y al abrir/cerrar. `touch-action: none` en la píldora.
+- **Preferencia `navMode`** (persistida en `localStorage: portaide:navMode`, default `drawer`; lee con
+  fallback seguro si el valor está vacío o es inválido). La cambia el usuario en Settings → Appearance.
+  - `drawer` (por defecto): botón `☰` en la cabecera de cada vista → panel lateral que desliza desde la
+    izquierda sobre un scrim que cierra al tocar (o con `Esc`). Sin barra inferior. `--nav-inset: 0`.
+  - `bottombar`: barra fija al borde inferior con los 5 destinos. El `☰` se auto-oculta de las cabeceras.
+    `--nav-inset: var(--bottombar-height)`.
+- **Modelo de clearance con `--nav-inset`**: `NavModeProvider` aplica la var en `document.documentElement`
+  (`0px` en drawer, `var(--bottombar-height)` en bottombar). Cada superficie inferior reserva su holgura
+  con `calc(var(--nav-inset, 0px) + env(safe-area-inset-bottom))`: en drawer el contenido llega al fondo
+  real (solo safe-area), en bottombar reserva además la altura de la barra. El composer del Chat suma
+  `--nav-inset` a su padding inferior para quedar siempre por encima de la barra.
+- **Drawer accesible**: `role="dialog"`, `aria-modal`, focus-trap, cierre con `Esc`, foco inicial al abrir
+  y devolución de foco al cerrar; el ítem activo lleva `aria-current`. Slide-in `--ease-out-strong` +
+  scrim fade; reduced-motion sin `transform`.
+- Tokens: `--bottombar-height` (alto de la barra, global), `--nav-inset` (holgura inferior según modo),
+  `--ease-out-strong`.
 
 ## 13c. Chat — control de esfuerzo con "Ultracode" (§6)
 

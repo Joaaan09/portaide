@@ -79,6 +79,15 @@
   --accent-magenta: #c264ff;
 }
 
+/* ---------- Layout + motion del shell edge-to-edge (DESIGN.md §5/§13b) ---------- */
+:root {
+  --bottombar-height: 56px; /* alto de la barra inferior de navegación (modo bottombar) */
+  /* Holgura inferior según el modo de navegación: 0 en drawer, alto de la barra
+     en bottombar. La fija NavModeProvider en <html>; este es el default (drawer). */
+  --nav-inset: 0px;
+  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
 /* ============================================================
    Reset mínimo + estilos base
    ============================================================ */

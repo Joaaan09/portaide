@@ -25,8 +25,16 @@ export interface ChatApi {
   effortOptions: { value: ChatEffortSetting; label: string }[]
   selectSession: (id: string) => void
   addSession: () => void
-  /** Cierra una pestaña: borra la sesión (best-effort) y reactiva un vecino. */
+  /** Cierra una pestaña (NO la borra): la marca open:false y reactiva un vecino. */
   closeSession: (id: string) => void
+  /** Borra de verdad una conversación (historial) y la quita de la tira si estaba abierta. */
+  deleteSession: (id: string) => void
+  /** Reabre una conversación del historial como pestaña, la activa y rehidrata su hilo. */
+  reopenSession: (meta: { id: string; title: string; claudeSessionId?: string | null }) => void
+  /** Renombra una conversación (optimista + PATCH best-effort). */
+  renameSession: (id: string, title: string) => void
+  /** Historial completo (scope=all) para el panel; NO entra en el snapshot. */
+  fetchHistory: () => Promise<Array<{ id: string; title: string; updatedAt: string; open: boolean }>>
   /** Envía un mensaje del usuario en la conversación activa (con el cwd del workspace). */
   sendMessage: (text: string, cwd: string | null) => void
   /** Approve/Reject real de una tool pendiente (manda permission_decision). */
@@ -58,6 +66,10 @@ export function useChatSession(): ChatApi {
     selectSession: chatStore.selectSession,
     addSession: chatStore.addSession,
     closeSession: chatStore.closeSession,
+    deleteSession: chatStore.deleteSession,
+    reopenSession: chatStore.reopenSession,
+    renameSession: chatStore.renameSession,
+    fetchHistory: chatStore.fetchHistory,
     sendMessage: chatStore.sendMessage,
     decide: chatStore.decide,
     setModel: chatStore.setModel,

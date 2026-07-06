@@ -6,6 +6,9 @@
   min-height: 0;
   overflow-y: auto;
   padding: 14px 15px 8px;
+  /* Holgura pequeña hasta el composer (que es el fondo real de la vista y ya
+     reserva la barra inferior de nav + safe-area por su cuenta, §13b). */
+  padding-bottom: 14px;
   display: flex;
   flex-direction: column;
   scrollbar-width: none;
