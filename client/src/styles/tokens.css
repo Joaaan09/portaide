@@ -99,13 +99,21 @@
 }
 
 html {
+  height: 100%;
   color-scheme: dark;
   -webkit-tap-highlight-color: transparent;
   -webkit-text-size-adjust: 100%;
 }
 
+/* La app NO scrollea el documento: el marco (AppShell) queda anclado al viewport
+   y el scroll vive dentro de cada vista. Bloquear el scroll/bounce del documento
+   evita que el teclado del móvil (PWA iOS) desplace la página y deje un hueco
+   abajo, y mantiene la barra inferior pegada al borde real. */
 body {
   margin: 0;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
   background: var(--bg);
   color: var(--text);
   font-family: 'IBM Plex Sans', system-ui, sans-serif;
@@ -121,5 +129,6 @@ samp {
 }
 
 #root {
-  min-height: 100dvh;
+  height: 100%;
+  overflow: hidden;
 }

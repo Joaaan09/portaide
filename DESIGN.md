@@ -351,7 +351,10 @@ Reglas: transiciones cortas (≤ ~220ms), `ease`/spring suaves, sin animar layou
   en flujo). Motivo: al abrir/cerrar el teclado del móvil el marco **no debe reacomodarse** ni dejar un
   hueco/espaciado residual abajo; anclado al viewport, el teclado solo se superpone y al cerrarse todo queda
   en su sitio, con la **barra inferior de nav siempre pegada al borde real**. El scroll vive dentro de cada
-  vista; el pull-to-refresh (píldora fixed) y la nav (drawer/barra, fixed) son hermanos del shell.
+  vista; el pull-to-refresh (píldora fixed) y la nav (drawer/barra, fixed) son hermanos del shell. Además el
+  **documento va bloqueado** (`html, body, #root { height: 100%; overflow: hidden }` + `overscroll-behavior:
+  none` en `body`) para que iOS no pueda desplazar la página y dejar un hueco: la app nunca scrollea el
+  documento, solo el `<main>`/lista de cada vista.
 - **Pull-to-refresh**: en standalone, tirar hacia abajo cuando el scroll de la vista activa está arriba
   del todo recarga la app (indicador sobrio con `spin`). No se activa en pestaña de navegador (ya trae el
   nativo). Solo alrededor del shell; el drawer y la barra inferior de nav quedan fuera del gesto.

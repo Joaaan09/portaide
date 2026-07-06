@@ -4,6 +4,16 @@
 
 ---
 
+2026-07-06 (fix móvil PWA · seguía el hueco abajo en modo barra) — El usuario (en la PWA standalone, modo barra
+inferior) seguía viendo hueco abajo tras el fix anterior. El fuente ya estaba correcto (`.shell` fixed inset:0
++ barra fixed `bottom:0`), así que la captura correspondía a un build previo; aun así se **blindó** el marco:
+`html, body, #root { height:100%; overflow:hidden }` + `overscroll-behavior:none` en `body` → el documento no
+puede scrollear/bouncing (causa típica del hueco por teclado en iOS PWA). Build verde; reglas presentes en el
+CSS compilado. **OJO: requiere rebuild+redeploy del frontend en el host y recargar la PWA** (iOS cachea: cerrar
+la app del multitarea y reabrir). No desplegable desde PortaIDE (dentro del contenedor). Sin commit.
+
+---
+
 2026-07-06 (fix ALTO · migrar el cliente del chat al SessionRuntime) — El usuario pidió "arregla ese bug": el
 server ya usaba el SessionRuntime (protocolo `attach`/`snapshot`/`message` multiplexado) pero `chatStore.ts`
 seguía en el protocolo viejo (`user_message` + eventos directos con `pendingLocalId`) → el chat no conectaría.
