@@ -38,6 +38,20 @@ if (!authEmail || !authPassword) {
   );
 }
 
+// --- Web Push (VAPID) -----------------------------------------------------
+// Notificaciones "sigue trabajando" / "terminó" con el móvil apagado. Las tres
+// variables son necesarias: sin ellas el push queda DESACTIVADO (log claro), pero
+// el servidor arranca igual — es una función opcional, no parte del borde.
+const vapidPublicKey = process.env.VAPID_PUBLIC_KEY || undefined;
+const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY || undefined;
+const vapidSubject = process.env.VAPID_SUBJECT || undefined;
+const pushEnabled = Boolean(vapidPublicKey && vapidPrivateKey && vapidSubject);
+if (!pushEnabled) {
+  console.warn(
+    '[env] VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY/VAPID_SUBJECT incompletos — notificaciones push DESACTIVADAS (genera un par con `npx web-push generate-vapid-keys`).'
+  );
+}
+
 // --- Cookie de sesión -----------------------------------------------------
 // Secure por defecto en producción; en dev (http) debe ir a false o el
 // navegador descarta la cookie. Se puede forzar con COOKIE_SECURE.
@@ -53,11 +67,43 @@ function parseMaxConcurrent(raw: string | undefined): number {
   return Number.isInteger(n) && n >= 0 ? n : 3;
 }
 
+/** Parsea un entero de env con mínimo defensivo; valor inválido → `fallback`. */
+function parseIntEnv(raw: string | undefined, fallback: number, min: number): number {
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= min ? n : fallback;
+}
+
 export const env = {
   /** Puerto HTTP del backend. */
   port: Number(process.env.PORT) || 4100,
+  /** Interfaz de escucha. En Docker daba igual (red interna); con el backend en
+   *  el HOST (systemd) el contenedor del frontend lo alcanza por `host-gateway`,
+   *  así que hay que escuchar en una interfaz visible desde ahí. Default 0.0.0.0.
+   *  OJO seguridad (CLAUDE.md §11): 0.0.0.0 deja el 4100 accesible desde fuera si
+   *  no hay firewall — bloquéalo con UFW salvo las redes Docker (ver deploy/README.md). */
+  host: process.env.HOST || '0.0.0.0',
   /** Máximo de turnos de chat corriendo simultáneamente (0 = sin límite; default 3). */
   chatMaxConcurrentTurns: parseMaxConcurrent(process.env.CHAT_MAX_CONCURRENT_TURNS),
+  /** Scrollback que guarda cada terminal en memoria para el `snapshot` al reengancharse
+   *  (bytes; default 256 KiB, mínimo 1 KiB). */
+  terminalScrollbackBytes: parseIntEnv(process.env.TERMINAL_SCROLLBACK_BYTES, 262_144, 1_024),
+  /** Tiempo que sobrevive un pty sin nadie mirando antes de que el reaper lo mate
+   *  (ms; default 2h, mínimo 1min). Generoso a propósito: permite dejar tareas
+   *  largas corriendo con el móvil apagado. */
+  terminalOrphanTtlMs: parseIntEnv(process.env.TERMINAL_ORPHAN_TTL_MS, 7_200_000, 60_000),
+  /** Máximo de sesiones de terminal (ptys) vivas a la vez (default 6, mínimo 1).
+   *  Tope defensivo: este VPS se congela por saturación de CPU. */
+  terminalMaxSessions: parseIntEnv(process.env.TERMINAL_MAX_SESSIONS, 6, 1),
+  /** Espera antes de avisar por push de "sigue trabajando" al irse el usuario
+   *  (ms; default 20s, mínimo 1s). Debounce: una reconexión rápida lo cancela. */
+  pushWorkingDelayMs: parseIntEnv(process.env.PUSH_WORKING_DELAY_MS, 20_000, 1_000),
+  /** Claves VAPID del Web Push (undefined = push desactivado). */
+  vapidPublicKey,
+  vapidPrivateKey,
+  /** `mailto:` de contacto que exige el protocolo VAPID. */
+  vapidSubject,
+  /** true solo si las tres variables VAPID están presentes. */
+  pushEnabled,
   /** Entorno de ejecución. */
   nodeEnv,
   /** Ruta del fichero SQLite (única persistencia). Default: ./data/portaide.db

@@ -58,6 +58,24 @@ export function initDb(): void {
       db.exec('ALTER TABLE chat_sessions ADD COLUMN open INTEGER NOT NULL DEFAULT 1');
     }
 
+    // Suscripciones de Web Push (avisos "sigue trabajando" / "terminó" con el
+    // móvil apagado). El `endpoint` es la PK natural: identifica de forma única al
+    // navegador/PWA destinatario y el propio servicio de push lo reemite tal cual.
+    // `notify_*` son las preferencias POR DISPOSITIVO y viven en el servidor a
+    // propósito: iOS obliga a MOSTRAR toda notificación que llegue (no existe el
+    // push silencioso), así que filtrar en el Service Worker no serviría de nada.
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS push_subscriptions (
+        endpoint TEXT PRIMARY KEY,
+        p256dh TEXT NOT NULL,
+        auth TEXT NOT NULL,
+        notify_done INTEGER NOT NULL DEFAULT 1,
+        notify_working INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
+
     console.log(`[sqlite] listo (${file})`);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

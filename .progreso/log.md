@@ -4,6 +4,68 @@
 
 ---
 
+2026-07-26 (8ª sesión · **trabajo en 2º plano de verdad: terminal persistente + cliente a prueba de móvil +
+push**) — El usuario reportó que al bloquear el móvil o salir de la app "se ve que ha parado", y pidió además
+varias pestañas de consola con sesiones de Claude simultáneas y notificaciones push. **Con arnés de subagentes
+(autorizado explícitamente).**
+
+**Diagnóstico medido, no supuesto.** Se probó contra el backend real del VPS cortando el WebSocket a la fuerza
+(`terminate()`): el **Chat NO se paraba** (60 s de trabajo completados sin cliente conectado; el `snapshot` al
+reconectar traía todo), pero la **Terminal SÍ moría** (`pty.ts` mataba el proceso en `ws.on('close')`; además
+`AppShell` con `key={view}` la mataba con solo cambiar de vista). El "parece parado" del Chat era del cliente:
+socket **zombi en `OPEN`** y **cero listeners de ciclo de vida** en toda la app.
+
+**Implementado:** (1) `server/src/terminal/runtime.ts` — el pty pasa a un `TerminalRuntime` propio con ring
+buffer de 256 KiB, protocolo multiplexado `attach|input|resize|detach|kill`, retención de sesiones muertas
+(para enterarte de que tu `clauded` murió), reaper a 2 h y cota de 6; arreglado el `cwd` que se ignoraba.
+(2) `server/src/ws/heartbeat.ts` — ping/pong que hace `terminate()` de los sockets fantasma (prerequisito del
+push). (3) Cliente Terminal: `terminalStore` singleton, pestañas en localStorage, `detach` (nunca `kill`) al
+cambiar de vista, reconexión con backoff+jitter. (4) Cliente Chat: detección de zombi por `lastFrameAt`,
+listeners `visibilitychange`/`pageshow`/`focus`/`online`, **`ack` del server** + reenvío idempotente por
+`localId` (con guard de idempotencia también en `runtime.ts`: un reenvío no puede ejecutar el turno dos veces),
+ids deterministas y scroll que respeta dónde estabas leyendo; fuera la "sesión fantasma" al fallar la carga.
+(5) **Web Push (VAPID)** para iPhone: SW nuevo, avisos "sigue trabajando" (al irte con turno vivo, debounce
+20 s) y "terminó/falló" con el mismo `tag`, panel en Settings con detección de standalone. (6) Refactor:
+`components/ConnBanner/` compartido por Chat y Terminal (se había duplicado el chasis).
+
+**Revisión: RECHAZADA la primera entrega.** El `revisor` reprodujo **dos fallos críticos** que habían pasado
+typecheck, build y la autoverificación de quien los escribió: (1) el borrado diferido del runtime de terminal
+borraba **por id**, así que al reiniciar una pestaña mataba del mapa a su sucesor → terminal en solo-lectura
+sin aviso y **`bash -l` huérfano que sobrevivía al `shutdown()`**; (2) el guard de idempotencia del chat
+—escrito por el orquestador— **no cubría la espera de slot**, de modo que un reenvío sí podía ejecutar el
+turno dos veces. Corregidos ambos con repro antes/después, más los altos (el `ack` borraba la burbuja del
+usuario de la pantalla; una pestaña muerta revivía sola; el watchdog cortaba el socket al teclear una
+contraseña sin eco) y dos medios (rechazos sin `catch` que en Node 20 **matan el proceso**; `selectSession`
+fantasma). De propina: cerrar una terminal ahora **escala SIGHUP → SIGKILL**, porque una shell con
+`trap '' HUP` sobrevivía al cierre y al apagado del servidor.
+
+**Verificado:** typecheck server+client y `npm run build` VERDES; pruebas reales con pty ejecutadas **contra
+el código pre-fix y post-fix** (identidad de runtime, exit rezagado, shell que ignora SIGHUP, sin procesos
+huérfanos tras `shutdown()`), repro de idempotencia con el slot ocupado, y rutas de push (401/400/201/409/503);
+secretos comprobados (`.env` ignorado, claves VAPID reales fuera del repo, placeholders en `.env.example`).
+**Nada probado en navegador ni en el iPhone.** **SIN commit y SIN desplegar** (a la espera del usuario).
+DESIGN.md §6.3/§9.1/§10.1 y `decisiones.md` (4 ADRs nuevos, incluido el "no" al SSH con contraseña) al día.
+
+2026-07-21 (meta · harness extraído como plantilla reutilizable) — El usuario pidió el harness de agentes
+"como plantilla" para aplicarlo a otros proyectos. Extraído a **`~/harness-template/`** (FUERA del repo de
+PortaIDE; este repo no cambia salvo esta entrada): `install.sh` + `template/` (CLAUDE.md genérico con
+marcadores «RELLENAR», los 3 agentes, `.progreso/` con los 5 archivos como formularios, `scripts/init.sh`,
+esqueleto de DESIGN.md) + `skills/` (las 3 de craft de diseño + `skills-lock.json`). Se cotejó SmartPeak vs
+PortaIDE para plantillar la versión **evolucionada**, no la de origen: §8 invertido a **Modo Directo por
+defecto** con "botón rojo" para los subagentes (SmartPeak delegaba por defecto), excepción del revisor con
+modelos de gama alta, y seguridad como sección de regla dura (§11). Los agentes resultaron ser idénticos
+entre proyectos salvo particularizaciones → en la plantilla van con huecos «RELLENAR» para las reglas duras
+y los riesgos típicos. `install.sh` sustituye `{{PROJECT}}`, no sobrescribe lo existente (`--force`) y tiene
+flags `--design` / `--skills`. **Verificado:** instalación limpia en un destino de prueba (16 archivos, 0
+placeholders sin sustituir), `init.sh` correcto, segunda pasada conserva lo existente; prueba borrada.
+**Transporte (pedido: usarlo en un proyecto FUERA del VPS):** elegido repo de GitHub. `~/harness-template`
+inicializado como repo git (rama `main`, commit inicial, `.gitignore`) con remoto
+`https://github.com/Joaaan09/harness-template.git`. **El push queda pendiente del usuario**: el VPS no tiene
+`gh`, ni `credential.helper`, ni clave SSH en GitHub (`ssh -T git@github.com` → permission denied), así que
+no se puede autenticar desde aquí. También queda un tarball `~/harness-template.tar.gz` (66K) como plan B.
+
+---
+
 2026-07-06 (fix móvil PWA · seguía el hueco abajo en modo barra) — El usuario (en la PWA standalone, modo barra
 inferior) seguía viendo hueco abajo tras el fix anterior. El fuente ya estaba correcto (`.shell` fixed inset:0
 + barra fixed `bottom:0`), así que la captura correspondía a un build previo; aun así se **blindó** el marco:
@@ -242,3 +304,36 @@ decisiones.md): arquitectura = servidor en el propio VPS; puente = CLI `claude` 
 cambio de modelo/slash-commands en la UI (`clauded` = `claude --dangerously-skip-permissions`); sin DB
 en v1. **Aún no hay código de la app**; siguiente paso: confirmar libs y arrancar Fase 1 (scaffolding +
 tokens + shell + vista Chat).
+
+## 2026-07-31 — Fix: botón del selector de carpeta tapado por la barra inferior
+
+En `bottombar`, el footer con "Open this folder" (morado) del `FolderPicker` quedaba **bajo la barra
+de navegación** y no se podía pulsar en móvil. Causa: el overlay (`z-index:100`) estaba atrapado en el
+contexto de apilamiento de `.viewport` (z-index:10) dentro de `.shell`, mientras la `BottomBar`
+(z-index:50) y el drawer (60) pintan en el contexto raíz. Fix: el `FolderPicker` ahora se renderiza con
+`createPortal(..., document.body)` y su overlay sube a `z-index:200` → el modal (scrim + footer) queda
+por encima de la barra. Typecheck verde. Sin commit ni deploy.
+
+## 2026-07-31 — Migración a "backend en el host" (repo hecho; falta ejecución en host)
+
+Raíz de la petición: el usuario quería "usar el VPS entero desde la app" (y no poder desplegar desde
+PortaIDE). Se descartó SSH (PortaIDE vive en el mismo VPS → SSH a sí mismo). Decisión (ADR 2026-07-31):
+**backend al host como systemd, frontend sigue en Docker**. Cambios de repo: `docker-compose.yml`
+(solo frontend + `extra_hosts` host-gateway), `client/nginx.conf` (`/api` y `/ws` → `host.docker.internal:4100`),
+`server` (nuevo `HOST` env), `deploy/portaide-backend.service`, `scripts/deploy.sh`, `deploy/README.md`,
+`.env.example`. Terminal y chat SIN cambios (el pty en el host ya es la shell real de kuoyii). Typecheck
+verde. Falta lo del host (Tailscale, systemd, UFW, rebuild) → `deploy/README.md`. Sin commit ni deploy.
+
+## 2026-08-01 — Historial del engine (conversaciones del VPS) cableado en la UI
+
+El usuario no veía en el panel de historial sus conversaciones de Claude Code del servidor (transcripts
+`.jsonl` de `~/.claude/projects`). Diagnóstico: el **backend ya existía y estaba verificado** (ADR
+2026-07-06: `GET /api/chat/engine/sessions[?cwd]` y `.../:id`, montados en `app.ts`) pero la **UI nunca
+se cableó** (quedó bloqueada por el cliente sin `attach/snapshot`, resuelto en la 8ª sesión). El panel
+solo pedía `/api/chat/sessions?scope=all` (SQLite = solo sesiones nacidas en PortaIDE). Cableado en Modo
+Directo: `chatStore` (`fetchEngineHistory(cwd)` + `openEngineSession` que materializa el transcript en
+SQLite vía upsert y hace `attach` → repinta y reanuda con `resume`; `fetchHistory` ahora expone
+`claudeSessionId` para dedup), `useChatSession`, `ChatView` (pasa el `workspace` como cwd), `ChatHistory`
+(+ CSS): panel en 2 secciones **PortaIDE** / **En el servidor · Claude Code**, dedup por
+id+claudeSessionId. Sin tocar el backend. Typecheck + build verdes. Sin commit ni deploy (falta QA en
+dispositivo tras desplegar en el host).

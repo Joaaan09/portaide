@@ -1,103 +1,64 @@
 // Handler de una conexión WebSocket de terminal (/ws/terminal). El upgrade ya
-// pasó el gate de autenticación (CLAUDE.md §11) antes de llegar aquí: este
-// módulo solo se ocupa de puentear un pty real con el socket.
+// pasó el gate de autenticación (CLAUDE.md §11) antes de llegar aquí.
 //
-// Protocolo JSON:
-//   cliente → server: {type:'input', data}            (write al pty)
-//                     {type:'resize', cols, rows}      (redimensiona el pty)
-//   server → cliente: {type:'output', data}           (salida del pty)
-//                     {type:'exit', code}              (el pty terminó)
-import { URL } from 'node:url';
+// Este WS es un TRANSPORTE MULTIPLEXADO (mismo patrón que /ws/chat): cada trama
+// lleva `sessionId` (el UUID de pestaña que genera el cliente) y una misma
+// conexión atiende N terminales a la vez. El pty NO vive aquí, vive en el
+// TerminalRuntime (runtime.ts), que es independiente del socket. Por eso:
+//   - Cerrar el socket solo DESUSCRIBE (la shell y sus procesos siguen vivos).
+//   - Al reengancharse se recibe un `snapshot` con el scrollback perdido.
+//
+// Protocolo (cliente→server), todas con `sessionId`:
+//   attach{sessionId, cwd?, cols?, rows?}  → crea o reengancha; responde snapshot + suscribe
+//   input{sessionId, data}                 → write al pty
+//   resize{sessionId, cols, rows}          → redimensiona el pty
+//   detach{sessionId}                      → desuscribe (NUNCA mata el pty)
+//   kill{sessionId}                        → mata el pty y elimina la sesión (SIGHUP
+//       y, si la shell lo ignora, SIGKILL: cerrar es explícito y no se negocia)
+//
+// Protocolo (server→cliente):
+//   snapshot{sessionId, data, alive, exitCode, cwd} → scrollback acumulado (para repintar).
+//       `alive:false` = la shell murió mientras no mirabas: `data` es su salida
+//       final y `exitCode` su código de salida. Esa sesión ya NO existe (no se
+//       revive sola: si quieres otra shell, el cliente abre una pestaña nueva).
+//   data{sessionId, data}                  → stream vivo
+//   exit{sessionId, exitCode}              → esa sesión ha terminado. Dos casos:
+//       · exitCode: number → el pty terminó por su cuenta (ese es su código de salida).
+//       · exitCode: null   → cierre EXPLÍCITO (`kill`): el server lo emite en el acto,
+//         sin esperar al `exit` real del pty (puede tardar si la shell ignora el SIGHUP),
+//         así que no hay código de salida que dar. A partir de ese `exit` el runtime
+//         viejo queda MUDO: nada de lo que haga su pty llega ya al cliente, y el
+//         mismo `sessionId` puede reusarse en el acto para abrir una shell nueva.
+//   error{sessionId, message}              → no se pudo atender (p.ej. límite de sesiones)
 import type { IncomingMessage } from 'node:http';
-import { spawn, type IPty } from 'node-pty';
 import type { WebSocket } from 'ws';
 import type { WsSession } from '../auth/ws.js';
-import { resolveCwd } from './cwd.js';
-
-// Dimensiones iniciales razonables: el cliente reajusta con fit apenas monta.
-const DEFAULT_COLS = 80;
-const DEFAULT_ROWS = 24;
-
-// Cota defensiva para el resize (evita valores absurdos desde el cliente).
-const MAX_DIM = 1000;
-
-/**
- * Shell a lanzar. Interactivo de login (`-l`): al ir conectada a un pty, la
- * shell es interactiva y, siendo de login, carga la cadena de perfiles
- * (`~/.profile` → `~/.bashrc`), por lo que los alias del usuario (p.ej.
- * `clauded`) quedan disponibles. CLAUDE.md §2/§4.
- */
-function resolveShell(): string {
-  return process.env.SHELL || 'bash';
-}
-
-/** Normaliza una dimensión (cols/rows) que llega del cliente. */
-function clampDim(value: unknown): number | null {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
-  const n = Math.floor(value);
-  if (n < 1) return null;
-  return Math.min(n, MAX_DIM);
-}
+import { clampDim, terminalRuntimeManager } from './runtime.js';
 
 interface ClientMessage {
   type?: unknown;
+  sessionId?: unknown;
   data?: unknown;
+  cwd?: unknown;
   cols?: unknown;
   rows?: unknown;
 }
 
 /**
- * Puentea un pty con el WebSocket ya autenticado. Al salir el pty cierra el WS;
- * al cerrarse el WS mata el pty. Toda escritura tras el cierre queda protegida.
+ * Puentea el socket con los TerminalRuntime. El socket es solo transporte: al
+ * cerrarse desuscribe sus sesiones, nunca mata ptys.
  */
 export function handleTerminalConnection(
   ws: WebSocket,
-  req: IncomingMessage,
+  _req: IncomingMessage,
   _session: WsSession
 ): void {
-  const url = new URL(req.url ?? '', 'http://localhost');
-  const cwd = resolveCwd(url.searchParams.get('cwd') ?? undefined);
+  // Sesiones a las que ESTE socket está suscrito (para desuscribir al cerrar).
+  const attached = new Set<string>();
 
-  let term: IPty;
-  try {
-    term = spawn(resolveShell(), ['-l'], {
-      name: 'xterm-256color',
-      cols: DEFAULT_COLS,
-      rows: DEFAULT_ROWS,
-      cwd,
-      // env del proceso + TERM correcto para colores/secuencias.
-      env: { ...process.env, TERM: 'xterm-256color' },
-    });
-  } catch (err) {
-    console.error('[terminal] no se pudo lanzar el pty:', err);
-    if (ws.readyState === ws.OPEN) {
-      ws.send(JSON.stringify({ type: 'exit', code: -1 }));
-    }
-    ws.close();
-    return;
-  }
-
-  // `closed` cubre tanto el exit del pty como el cierre del WS: una vez true,
-  // no se escribe ni al socket ni al pty (protección tras exit).
-  let closed = false;
-
-  const onData = term.onData((data) => {
-    if (!closed && ws.readyState === ws.OPEN) {
-      ws.send(JSON.stringify({ type: 'output', data }));
-    }
-  });
-
-  const onExit = term.onExit(({ exitCode }) => {
-    if (closed) return;
-    closed = true;
-    if (ws.readyState === ws.OPEN) {
-      ws.send(JSON.stringify({ type: 'exit', code: exitCode }));
-    }
-    ws.close();
-  });
+  const asId = (v: unknown): string | null => (typeof v === 'string' && v ? v : null);
 
   ws.on('message', (raw) => {
-    if (closed) return;
     let msg: ClientMessage;
     try {
       msg = JSON.parse(raw.toString()) as ClientMessage;
@@ -105,26 +66,59 @@ export function handleTerminalConnection(
       return; // ignora tramas no-JSON
     }
 
-    if (msg.type === 'input' && typeof msg.data === 'string') {
-      term.write(msg.data);
-    } else if (msg.type === 'resize') {
-      const cols = clampDim(msg.cols);
-      const rows = clampDim(msg.rows);
-      if (cols !== null && rows !== null) term.resize(cols, rows);
+    const sessionId = asId(msg.sessionId);
+    if (!sessionId) return; // todas las tramas del protocolo llevan sessionId
+
+    switch (msg.type) {
+      case 'attach': {
+        const ok = terminalRuntimeManager.attach(ws, sessionId, {
+          cwd: typeof msg.cwd === 'string' ? msg.cwd : undefined,
+          cols: clampDim(msg.cols),
+          rows: clampDim(msg.rows),
+        });
+        // ok=false → o se rechazó (trama `error`) o la sesión estaba muerta y solo
+        // se entregó su snapshot final: en ninguno de los dos casos hay suscripción.
+        if (ok) attached.add(sessionId);
+        return;
+      }
+
+      case 'input': {
+        if (typeof msg.data !== 'string') return;
+        terminalRuntimeManager.write(sessionId, msg.data);
+        return;
+      }
+
+      case 'resize': {
+        const cols = clampDim(msg.cols);
+        const rows = clampDim(msg.rows);
+        if (cols !== null && rows !== null) {
+          terminalRuntimeManager.resize(sessionId, cols, rows);
+        }
+        return;
+      }
+
+      case 'detach': {
+        attached.delete(sessionId);
+        terminalRuntimeManager.detach(ws, sessionId);
+        return;
+      }
+
+      case 'kill': {
+        attached.delete(sessionId);
+        terminalRuntimeManager.kill(sessionId);
+        return;
+      }
+
+      default:
+        return;
     }
   });
 
+  // Cierre/error del socket: SOLO desuscribe de sus sesiones. NUNCA mata el pty
+  // (ese es justo el bug que arreglamos: la shell sigue viva en su runtime).
   const cleanup = (): void => {
-    onData.dispose();
-    onExit.dispose();
-    if (!closed) {
-      closed = true;
-      try {
-        term.kill();
-      } catch {
-        /* el proceso ya no existe */
-      }
-    }
+    for (const id of attached) terminalRuntimeManager.detach(ws, id);
+    attached.clear();
   };
 
   ws.on('close', cleanup);

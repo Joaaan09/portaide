@@ -1,0 +1,68 @@
+/* Switch — interruptor del sistema (DESIGN.md §10.1). Solo tokens --*. */
+
+/* El botón aporta el área táctil de ~44px (§12); la pista es más pequeña. */
+.switch {
+  display: grid;
+  place-items: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 9px 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.switch:disabled {
+  cursor: default;
+}
+
+.track {
+  position: relative;
+  display: block;
+  width: 44px;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--surface2);
+  transition: background-color 0.16s ease, border-color 0.16s ease;
+}
+
+.knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--dim);
+  transition: transform 0.16s ease, background-color 0.16s ease;
+}
+
+/* Encendido: pista de acento + knob en --on-accent (DESIGN.md §3: nunca blanco
+   sobre el acento). Desplazamiento 18px = 44 - 20 - 2*2 - 2*1(borde). */
+.switch[aria-checked='true'] .track {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.switch[aria-checked='true'] .knob {
+  background: var(--on-accent);
+  transform: translateX(18px);
+}
+
+.switch:focus-visible .track {
+  outline: 2px solid var(--accent2);
+  outline-offset: 2px;
+}
+
+.switch:disabled .track {
+  opacity: 0.55;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .track,
+  .knob {
+    transition: none;
+  }
+}

@@ -1,0 +1,109 @@
+/* ConnBanner — tira de estado de conexión (DESIGN.md §6.3), compartida por Chat
+   y Terminal. Fila fina bajo la cabecera de pestañas; sin estado que contar no
+   ocupa nada. Solo tokens `--*`. */
+
+/* Región live permanente (vacía cuando todo va bien → 0px de alto) */
+.live {
+  flex: none;
+}
+
+.bar {
+  width: 100%;
+  min-height: 34px;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 13px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface2);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  line-height: 1.2;
+  color: var(--dim);
+  text-align: left;
+  animation: connIn 0.18s ease both;
+}
+
+.barButton {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s ease;
+}
+
+.barButton:active {
+  background: var(--surface);
+}
+
+.barButton:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* Punto de estado (patrón de DESIGN.md §3) */
+.dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+/* Reconectando / carga fallida: espera */
+.dotWait {
+  background: var(--yellow);
+  animation: connPulse 1.4s ease-in-out infinite;
+}
+
+/* Socket caído */
+.dotDown {
+  background: var(--red);
+}
+
+.label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.action {
+  flex: none;
+  color: var(--accent);
+}
+
+@keyframes connIn {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes connPulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bar {
+    animation: none;
+  }
+
+  .dotWait {
+    animation: none;
+  }
+
+  .barButton {
+    transition: none;
+  }
+}

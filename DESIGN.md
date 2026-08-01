@@ -262,6 +262,53 @@ aprobaciones, `{ open }` al cerrar/reabrir pestaña y `{ title }` al renombrar. 
 montar se cargan las pestañas abiertas (meta) y el hilo de la activa vía `GET /sessions/:id`; el resto se
 piden al enfocarlas. Detalle técnico en `.progreso/decisiones.md`.
 
+### 6.3. Tira de estado de conexión (componente compartido)
+
+> Añadida 2026-07-26. En móvil el WebSocket del chat se queda **zombi en `OPEN`** (pantalla bloqueada,
+> cambio WiFi↔datos) y el hilo deja de crecer: el turno sigue vivo en el server, pero el usuario ve un
+> chat "parado" sin ninguna señal. La tira hace visible ese estado. Detalle técnico en `.progreso/decisiones.md`.
+
+- **Es un componente compartido**, no un patrón copiado: vive en `client/src/components/ConnBanner/`
+  (`ConnBanner.tsx` + `.module.css`) y lo consumen **Chat** (aquí) y **Terminal** (§9.1). Cualquier cambio
+  de esta sección se hace **una sola vez**, ahí. Las diferencias entre vistas se cubren con **props
+  opcionales** (texto de error ajeno al socket, handler y etiqueta de reintento), nunca con otro chasis.
+- **Ubicación**: fila fina justo **debajo de la cabecera de pestañas** de la vista (§6/§9), ancho completo,
+  empujando el contenido (no flota sobre él). **Solo existe cuando hay algo que decir**: con la conexión
+  sana (y, en el Chat, las conversaciones cargadas) **no se renderiza nada** (altura 0, cero ruido).
+- **Retardo de aparición ~800ms**: reconectar suele tardar ~200ms, así que un microcorte (o el arranque
+  de la app) **no pinta nada**. La tira solo aparece si el problema persiste.
+- **Chasis**: fondo `--surface2`, borde inferior 1px `--border`, alto ~34px, texto mono 11px `--dim`,
+  punto de estado de 6px a la izquierda (patrón de §3 "Estado / OK").
+- **Estados** (manda el socket: un fallo ajeno solo se anuncia si la conexión está sana):
+  - **Reconectando** (socket abriéndose): punto `--yellow` con `connPulse`, texto `Reconectando…`. Informativo
+    (`<p role="status">`), **nunca accionable** (el cliente ya está reintentando).
+  - **Sin conexión** (socket caído, esperando el reintento): punto `--red`, texto `Sin conexión con el servidor`
+    + acción `Reintentar`.
+  - **Error de carga** (el socket va, pero falló algo ajeno a él): punto `--yellow`, texto que pasa la
+    vista + acción `Reintentar`. Hoy solo lo usa el Chat: `No se pudieron cargar las conversaciones`.
+- **Acción**: cuando hay reintento, **toda la tira es el botón** (target táctil de ancho completo, §12);
+  la etiqueta `Reintentar` va a la derecha en `--accent`. `:active` baja a `--surface`; foco visible
+  `outline: 2px --accent` hacia dentro. Sin handler de reintento la tira es informativa (`<p>`).
+- **Motion** (§11): entra con fade + `translateY(-3px)` (.18s ease). El punto de "reconectando" usa
+  `connPulse` (1.4s ease-in-out infinite, `opacity` .45↔1). `prefers-reduced-motion` desactiva ambas.
+- **Accesibilidad**: `role="status"` + `aria-live="polite"` en una **región live permanente** (vive siempre
+  en el DOM, aunque esté vacía, para que el cambio se anuncie de verdad) y sin robar el foco. Nunca es el
+  único indicador: el hilo mantiene su typing y el composer su estado.
+
+**Estado de entrega de la burbuja del usuario.** Mismo problema, otra cara: si el mensaje se envía por un
+socket zombi, el `send` se pierde en silencio. La burbuja del usuario (§6) gana dos estados locales (el
+hilo del server no los tiene):
+
+- **Enviando** (aún sin confirmar por el server): burbuja a `opacity: .62` con transición .18s. Con red
+  sana dura milisegundos; al confirmarse vuelve a opacidad plena **sin parpadeo** (misma identidad).
+- **No entregado** (agotados los reintentos): burbuja atenuada + **pie a la derecha, bajo la burbuja**,
+  en mono 10.5px: `⚠ No entregado` en `--red` + botón **`Reintentar`** (chip `--surface2`, borde
+  `--border`, radio 7px, texto `--accent`). Nunca se finge que el mensaje llegó.
+
+**Scroll del hilo.** El auto-scroll al fondo solo se aplica si el usuario **ya estaba al fondo**
+(umbral 100px). Si está leyendo hacia arriba, su posición se respeta aunque entren mensajes o el hilo se
+reconstruya al reconectar. Al cambiar de conversación siempre se baja al fondo.
+
 ## 7. Vista Editor
 
 - **Tira de pestañas** de archivos (icono-badge de extensión + nombre; activa subrayada `--accent`;
@@ -289,6 +336,33 @@ piden al enfocarlas. Detalle técnico en `.progreso/decisiones.md`.
   `--text`/`--dim`/`--faint` según nivel). Prompt `❯` en `--green` con cursor `--accent` parpadeante.
 - **Barra de teclas especiales**: `esc tab ctrl alt ~ / | - ^C ↑ ↓ ← →`, celdas mono ~46px.
 
+### 9.1. Persistencia: estado de conexión y sesión terminada
+
+> Añadido 2026-07-26. El pty vive en el server y **sobrevive** al socket (cambiar de vista, bloquear el
+> móvil, recargar la PWA). Eso obliga a hacer visibles dos cosas que antes no existían: que el **socket**
+> se ha caído (la terminal parece "parada" y no lo está) y que la **shell ha muerto** mientras no mirabas.
+> Detalle técnico en `.progreso/decisiones.md`.
+
+- **Marcador de estado de la pestaña** (sustituye al "punto de estado" genérico de arriba): punto de 7px
+  `--green` con glow = conectada · punto `--faint` = conectando · punto `--red` = sin conexión ·
+  **cuadrado** de 8px `--red` (`border-radius` 2px) = **la shell murió**. La forma, no sólo el color,
+  distingue "muerta" de "sin conexión" (§12); se acompaña de texto sr-only.
+- **Tira de conexión**: **es el componente compartido de §6.3, sin variantes** (mismo chasis, motion, copy,
+  retardo y regla de "toda la tira es el botón"). Aquí se monta bajo la tira de pestañas, sin más props que
+  el estado del socket y el reintento. Estados que la disparan en esta vista: **`Reconectando…`** (socket
+  abriéndose, informativo) y **`Sin conexión con el servidor`** + `Reintentar` (socket caído esperando
+  reintento). El **cwd no va en la tira**: el prompt de la shell ya dice dónde estás. Los **puntos de las
+  pestañas** comparten la misma histéresis de 800ms que la tira (un microcorte no los hace parpadear).
+  Un solo componente, dos vistas: cualquier cambio se hace en §6.3.
+- **Aviso de sesión terminada**: barra anclada **abajo del área de terminal** (nunca un overlay: la
+  salida final del proceso, que el snapshot acaba de repintar, tiene que seguir legible; el área de xterm
+  reserva su alto, así que no tapa nada). Alto ≥44px, fondo `--surface`, borde superior 1px `--border`;
+  cuadrado `--red` + texto mono 12px `--dim` `la shell terminó · código N` + acción **`Reiniciar shell`**
+  (chip `--surface2` + 1px `--border`), que abre una shell nueva y limpia en esa pestaña. Entra con fade +
+  `translateY(4px)` (.18s ease); reduced-motion: sólo fade.
+- **`role="status"` + `aria-live="polite"`** en la tira (región live permanente, aunque esté vacía) y en el
+  aviso: se anuncian sin robar el foco al área de escritura (el teclado móvil no se cierra).
+
 ## 10. Vista Settings
 
 Secciones tipo "lista agrupada" (card `--surface`, filas separadas por 1px `--border`), con eyebrow
@@ -309,8 +383,47 @@ Grupos v1:
   + glow), **Editor font size** = stepper `− 14px +` (mono, rango 11–20, aplica a CodeMirror en vivo).
 - **System** (sustituye a VPS Connection): filas display en mono — Backend (uptime), Node, Claude CLI
   (versión), Workspace (`fsRoot`), Mongo (`Connected`/`Disconnected` en `--green`/`--red`).
+- **Notifications** (§10.1): notificaciones Web Push del chat.
 - Pie con marca/versión en mono `--faint` (hoy solo `PortaIDE`: el `package.json` es `0.0.0`; añadir
   versión cuando exista una real, sin acción "check updates" —no hay mecanismo de updates—).
+
+### 10.1. Settings → Notificaciones (Web Push)
+
+> Añadida 2026-07-26. No está en el mockup canónico (es funcionalidad nueva: avisar al móvil de que
+> Claude sigue trabajando o ha terminado, con la app cerrada). La notificación **en sí** la pinta el
+> sistema operativo: no se puede estilar, así que aquí solo se diseña el panel que la gobierna.
+> Detalle técnico en [.progreso/decisiones.md](.progreso/decisiones.md).
+
+Grupo "lista agrupada" (§10) con eyebrow `NOTIFICACIONES`. Filas de arriba abajo, del estado a la acción:
+
+- **Estado** (fila display): label `--dim` + valor mono a la derecha, con color de refuerzo (§3):
+  `Activadas` en `--green`, `Desactivadas` en `--dim`, `Permiso denegado` / `No disponible` en `--red`.
+  El color nunca es el único indicador: el texto ya lo dice (§12).
+- **Aviso de instalación** (solo si la PWA **no** está en standalone; iOS no entrega push en una pestaña
+  de Safari): fila de texto explicativo 12.5px `--dim` con el gesto en mono `--text`
+  (`Compartir › Añadir a pantalla de inicio`). Es un dato, no una alarma: sin fondo de error ni iconografía.
+- **Acción principal**: botón de ancho completo, min-height 44px, radio 8px.
+  - *Activar notificaciones* → **primario**: `--accent` / `--on-accent`, peso 600.
+  - *Desactivar* → **secundario**: `--surface2`, borde 1px `--border`, texto `--dim`.
+  - Ocupado: label en gerundio + `disabled` (`--surface2` / `--faint`, `cursor: default`).
+  - Error: línea `role="alert"` en `--red`, 12.5px, sobria (mismo tono que §15).
+- **Qué avisar**: dos filas con **switch** a la derecha; bajo el label, ayuda en mono 11px `--faint`.
+  - `Terminó` — **activado por defecto**.
+  - `Está trabajando` — **desactivado por defecto**, con la ayuda "en iOS suena y vibra".
+  - Con las notificaciones desactivadas, ambas filas van atenuadas (`opacity: .5`) y sus switches `disabled`.
+- **Prueba**: botón **secundario** "Enviar notificación de prueba" + línea de resultado en mono 11px
+  (`--green` si salió, `--red` si falló), con `role="status"`.
+
+**Switch (componente nuevo del sistema).** No existía; se define aquí para poder reutilizarlo:
+
+- **Pista** 44×26px, radio 13px: apagada `--surface2` + borde 1px `--border`; encendida `--accent` +
+  borde `--accent`.
+- **Knob** 20px circular, desplazamiento 18px: apagado `--dim` (contraste sobre `--surface2`),
+  encendido `--on-accent` (§3: nunca blanco sobre acento).
+- **Semántica**: `<button role="switch" aria-checked>` con nombre accesible (`aria-labelledby` a la fila);
+  `:focus-visible` outline 2px `--accent2`; área táctil ≥44px por padding (§12).
+- **Motion** (§11): `transform` del knob + `background-color` de la pista, 160ms `ease`.
+  `prefers-reduced-motion` desactiva ambas transiciones (cambio instantáneo).
 
 ## 11. Movimiento
 
@@ -325,6 +438,9 @@ Animaciones del mockup (respétalas; son la firma de interacción):
 - **Barra inferior de navegación** (§5/§13b): persistente, **sin** animación de entrada; solo transición
   de color del ítem activo `~150ms`.
 - `spin` — spinners (`to { transform: rotate(360deg) }`).
+- `connPulse` — punto de la tira de estado de conexión (componente compartido, §6.3; lo usan Chat y
+  Terminal §9.1), `1.4s ease-in-out infinite` (`opacity` .45↔1). No viene del mockup: se añade con la
+  tira (2026-07-26).
 
 Reglas: transiciones cortas (≤ ~220ms), `ease`/spring suaves, sin animar layout costoso. Respeta
 `prefers-reduced-motion: reduce` (desactiva blink/rebotes; deja fades mínimos). Usa la skill

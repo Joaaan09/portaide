@@ -1,22 +1,25 @@
-// TerminalPane — una instancia de xterm.js puenteada con su propio WebSocket a
-// /ws/terminal (un pty por pestaña). Se ocupa del ciclo de vida de la terminal
-// y del socket, el fit + resize, el tema reactivo y el overlay de estado.
-// La política de entrada (modificadores sticky) vive en TerminalView: aquí solo
-// se reenvía lo que el usuario teclea vía `onInput`. El pane se auto-registra en
-// TerminalView con un handle imperativo (send/focus/fit).
-import { useEffect, useRef, useState } from 'react'
+// TerminalPane — una instancia de xterm.js enchufada al `terminalStore` (que es
+// quien tiene el ÚNICO WebSocket multiplexado a /ws/terminal). El pane sólo se
+// ocupa de la terminal en sí: ciclo de vida de xterm, fit + resize, tema
+// reactivo y overlay cuando el pty ha terminado.
+//
+// Clave de la persistencia: al desmontarse NO se mata nada. El pane da de baja
+// su "sink" en el store → `detach` → el pty SIGUE VIVO en el server. Al volver,
+// el `snapshot` (scrollback autoritativo) repinta la terminal entera.
+//
+// La política de entrada (modificadores sticky) vive en TerminalView: aquí sólo
+// se reenvía lo que el usuario teclea vía `onInput`.
+import { useEffect, useRef } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { buildXtermTheme } from './xtermTheme'
+import { terminalStore, type TerminalSink } from './terminalStore'
 import styles from './TerminalView.module.css'
 
-/** Estado de la conexión de una pestaña (para el punto de estado y el overlay). */
-export type ConnStatus = 'connecting' | 'open' | 'closed' | 'error'
+export type { ConnStatus, TabStatus } from './terminalStore'
 
 /** API imperativa que TerminalView usa para dirigir esta terminal. */
 export interface TerminalHandle {
-  /** Escribe datos crudos en el pty (input del usuario ya procesado). */
-  send: (data: string) => void
   /** Devuelve el foco al área de escritura (mantiene el teclado móvil abierto). */
   focus: () => void
   /** Reajusta el tamaño al contenedor y notifica el resize al pty. */
@@ -28,10 +31,12 @@ interface TerminalPaneProps {
   active: boolean
   /** Cambia cuando el tema (data-theme) cambia: dispara reaplicar el tema xterm. */
   themeVersion: number
+  /** false si el pty terminó (muestra el overlay con la acción de reinicio). */
+  alive: boolean
+  /** Código de salida del pty, si terminó. */
+  exitCode: number | null
   /** El usuario tecleó en la terminal (antes de aplicar modificadores). */
   onInput: (data: string) => void
-  /** Notifica el estado de conexión hacia arriba (punto de estado en la pestaña). */
-  onStatus: (status: ConnStatus) => void
   /** Alta/baja del handle imperativo de esta pestaña en TerminalView. */
   registerHandle: (id: string, handle: TerminalHandle | null) => void
 }
@@ -39,43 +44,43 @@ interface TerminalPaneProps {
 const prefersReducedMotion = (): boolean =>
   window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
-function terminalWsUrl(): string {
-  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  return `${proto}//${window.location.host}/ws/terminal`
+/**
+ * Firma barata de un snapshot (longitud + hash FNV-1a de la cola). Sirve para
+ * NO repintar cuando el server manda exactamente lo que ya está en pantalla
+ * (caso típico al volver del background: evita el parpadeo del reset).
+ */
+function snapshotSig(data: string): string {
+  const tail = data.length > 4096 ? data.slice(-4096) : data
+  let h = 0x811c9dc5
+  for (let i = 0; i < tail.length; i += 1) {
+    h ^= tail.charCodeAt(i)
+    h = Math.imul(h, 0x01000193)
+  }
+  return `${data.length}:${(h >>> 0).toString(36)}`
 }
 
 export default function TerminalPane({
   id,
   active,
   themeVersion,
+  alive,
+  exitCode,
   onInput,
-  onStatus,
   registerHandle,
 }: TerminalPaneProps) {
   const hostRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
-  const wsRef = useRef<WebSocket | null>(null)
 
-  // Callbacks siempre frescos para los listeners creados una sola vez.
+  // Callback siempre fresco para el listener creado una sola vez.
   const onInputRef = useRef(onInput)
   onInputRef.current = onInput
-  const onStatusRef = useRef(onStatus)
-  onStatusRef.current = onStatus
   const activeRef = useRef(active)
   activeRef.current = active
 
-  const [status, setStatus] = useState<ConnStatus>('connecting')
-  const statusRef = useRef<ConnStatus>('connecting')
-  statusRef.current = status
-
-  // `epoch` re-crea el WebSocket (reconexión manual desde el overlay).
-  const [epoch, setEpoch] = useState(0)
-
-  const updateStatus = (next: ConnStatus): void => {
-    statusRef.current = next
-    setStatus(next)
-  }
+  // Firma del último snapshot pintado + si hubo escritura en vivo después.
+  const appliedSigRef = useRef<string | null>(null)
+  const dirtyRef = useRef(false)
 
   // Fit + envío del nuevo tamaño al pty. No-op si la pestaña no está visible
   // (display:none → dimensiones 0): se reajusta al activarse.
@@ -83,18 +88,21 @@ export default function TerminalPane({
     if (!activeRef.current) return
     const term = termRef.current
     const fit = fitRef.current
-    const ws = wsRef.current
     if (!term || !fit) return
+    // Si estábamos pegados abajo (lo normal), seguir pegados tras el reflow
+    // (rotación, teclado móvil, aviso de sesión terminada). Si el usuario había
+    // subido a leer historial, se respeta su posición.
+    const buf = term.buffer.active
+    const wasAtBottom = buf.viewportY >= buf.baseY
     try {
       fit.fit()
     } catch {
       return // el contenedor aún no es medible
     }
-    if (term.cols > 0 && term.rows > 0 && ws?.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }))
-    }
+    if (wasAtBottom) term.scrollToBottom()
+    terminalStore.sendResize(id, term.cols, term.rows)
   }
-  // Ref para que el handle imperativo llame siempre a la versión actual.
+  // Ref para que los callbacks estables llamen siempre a la versión actual.
   const fitAndResizeRef = useRef(fitAndResize)
   fitAndResizeRef.current = fitAndResize
 
@@ -102,14 +110,35 @@ export default function TerminalPane({
   const handleRef = useRef<TerminalHandle | null>(null)
   if (!handleRef.current) {
     handleRef.current = {
-      send: (data) => {
-        const ws = wsRef.current
-        if (ws?.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: 'input', data }))
-        }
-      },
       focus: () => termRef.current?.focus(),
       fit: () => fitAndResizeRef.current(),
+    }
+  }
+
+  // Sumidero estable que el store usa para pintar esta pestaña.
+  const sinkRef = useRef<TerminalSink | null>(null)
+  if (!sinkRef.current) {
+    sinkRef.current = {
+      applySnapshot: (data) => {
+        const term = termRef.current
+        if (!term) return
+        const sig = snapshotSig(data)
+        // Ya pintado y sin cambios desde entonces → nada que hacer.
+        if (sig === appliedSigRef.current && !dirtyRef.current) return
+        term.reset()
+        term.write(data, () => term.scrollToBottom())
+        appliedSigRef.current = sig
+        dirtyRef.current = false
+      },
+      write: (data) => {
+        dirtyRef.current = true
+        termRef.current?.write(data)
+      },
+      size: () => {
+        const term = termRef.current
+        if (!term || term.cols <= 0 || term.rows <= 0) return null
+        return { cols: term.cols, rows: term.rows }
+      },
     }
   }
 
@@ -139,11 +168,14 @@ export default function TerminalPane({
     term.open(host)
     termRef.current = term
     fitRef.current = fit
+    // Terminal nueva: lo que hubiera pintado antes ya no está en pantalla.
+    appliedSigRef.current = null
+    dirtyRef.current = false
 
     // Lo que el usuario teclea → arriba (TerminalView aplica modificadores y envía).
     const dataSub = term.onData((data) => onInputRef.current(data))
 
-    // Reajuste ante cambios de tamaño del contenedor (rotación, split, etc.).
+    // Reajuste ante cambios de tamaño del contenedor (rotación, teclado, split).
     const ro = new ResizeObserver(() => fitAndResizeRef.current())
     ro.observe(host)
 
@@ -160,47 +192,9 @@ export default function TerminalPane({
     }
   }, [])
 
-  // --- Conexión WebSocket (se re-crea al reconectar) ---------------------
-  useEffect(() => {
-    updateStatus('connecting')
-    const ws = new WebSocket(terminalWsUrl())
-    wsRef.current = ws
-
-    ws.onopen = () => {
-      updateStatus('open')
-      fitAndResizeRef.current() // envía el tamaño real al pty recién abierto
-      if (activeRef.current) termRef.current?.focus()
-    }
-
-    ws.onmessage = (ev) => {
-      if (typeof ev.data !== 'string') return
-      let msg: { type?: unknown; data?: unknown }
-      try {
-        msg = JSON.parse(ev.data)
-      } catch {
-        return
-      }
-      if (msg.type === 'output' && typeof msg.data === 'string') {
-        termRef.current?.write(msg.data)
-      } else if (msg.type === 'exit') {
-        updateStatus('closed') // el server cierra el socket a continuación
-      }
-    }
-
-    ws.onerror = () => updateStatus('error')
-
-    ws.onclose = () => {
-      // No pisar un 'error' previo con 'closed' (el error es más informativo).
-      if (statusRef.current !== 'error') updateStatus('closed')
-    }
-
-    return () => {
-      // Evita callbacks sobre un socket que vamos a cerrar.
-      ws.onopen = ws.onmessage = ws.onerror = ws.onclose = null
-      ws.close()
-      if (wsRef.current === ws) wsRef.current = null
-    }
-  }, [epoch])
+  // --- Alta del sink en el store: `attach` al montar, `detach` al desmontar.
+  // NUNCA `kill` aquí: el pty debe sobrevivir al cambio de vista.
+  useEffect(() => terminalStore.registerSink(id, sinkRef.current!), [id])
 
   // --- Reaplicar el tema de xterm al cambiar data-theme ------------------
   useEffect(() => {
@@ -217,23 +211,28 @@ export default function TerminalPane({
     return () => cancelAnimationFrame(raf)
   }, [active])
 
-  const reconnect = (): void => {
-    termRef.current?.reset()
-    setEpoch((e) => e + 1)
-  }
-
-  const disconnected = status === 'closed' || status === 'error'
-
   return (
     <div className={styles.paneInner}>
-      <div ref={hostRef} className={styles.host} role="group" aria-label="Terminal (pty del VPS)" />
-      {disconnected && (
-        <div className={styles.overlay} role="status">
-          <p className={styles.overlayText}>
-            {status === 'error' ? 'Connection error' : 'Terminal disconnected'}
-          </p>
-          <button type="button" className={styles.reconnect} onClick={reconnect}>
-            Reconnect
+      <div
+        ref={hostRef}
+        className={alive ? styles.host : `${styles.host} ${styles.hostDead}`}
+        role="group"
+        aria-label="Terminal (pty del VPS)"
+      />
+      {/* Sesión terminada: aviso ANCLADO ABAJO, no overlay — la salida final que
+          acaba de repintar el snapshot tiene que quedar legible (DESIGN.md §9). */}
+      {!alive && (
+        <div className={styles.dead} role="status">
+          <span className={styles.deadMark} aria-hidden="true" />
+          <span className={styles.deadText}>
+            la shell terminó{exitCode === null ? '' : ` · código ${exitCode}`}
+          </span>
+          <button
+            type="button"
+            className={styles.deadAction}
+            onClick={() => terminalStore.restartTab(id)}
+          >
+            Reiniciar shell
           </button>
         </div>
       )}

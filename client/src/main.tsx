@@ -16,6 +16,11 @@ import '@fontsource/jetbrains-mono/400-italic.css'
 
 import './styles/tokens.css'
 import App from './App'
+import { consumeChatDeepLink, registerServiceWorker } from './lib/push'
+
+// Arranque desde una notificación (`/?chat=<sessionId>`): se apunta la sesión
+// como pestaña activa ANTES de montar la app y se limpia la URL.
+consumeChatDeepLink()
 
 // El tema lo gestiona ThemeProvider (src/theme/); index.html trae
 // data-theme="midnight" de base para evitar flash antes de hidratar.
@@ -24,3 +29,7 @@ createRoot(document.getElementById('root')!).render(
     <App />
   </StrictMode>,
 )
+
+// Service Worker: SOLO para Web Push (no cachea nada, ver client/public/sw.js).
+// Registrarlo no pide permisos ni suscribe: eso lo hace el usuario en Settings.
+void registerServiceWorker()

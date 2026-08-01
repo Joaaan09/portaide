@@ -19,8 +19,11 @@ export interface ChatApi {
   model: string
   permissionMode: ChatPermissionMode
   effort: ChatEffortSetting
+  /** Estado del socket del chat (lo pinta la tira de conexión, DESIGN.md §6.3). */
   connStatus: ConnStatus
   loading: boolean
+  /** true si la lista de conversaciones no cargó (se reintenta sola + botón). */
+  sessionsError: boolean
   modelOptions: { value: string; label: string }[]
   effortOptions: { value: ChatEffortSetting; label: string }[]
   selectSession: (id: string) => void
@@ -34,15 +37,27 @@ export interface ChatApi {
   /** Renombra una conversación (optimista + PATCH best-effort). */
   renameSession: (id: string, title: string) => void
   /** Historial completo (scope=all) para el panel; NO entra en el snapshot. */
-  fetchHistory: () => Promise<Array<{ id: string; title: string; updatedAt: string; open: boolean }>>
+  fetchHistory: () => Promise<
+    Array<{ id: string; title: string; updatedAt: string; open: boolean; claudeSessionId?: string | null }>
+  >
+  /** Historial REAL del engine (~/.claude/projects) del proyecto abierto; POR PROYECTO (cwd). */
+  fetchEngineHistory: (
+    cwd: string | null,
+  ) => Promise<Array<{ id: string; title: string; updatedAt: string; gitBranch: string | null; messageCount: number }>>
+  /** Abre una conversación del engine (transcript .jsonl): la materializa, repinta y reanuda. */
+  openEngineSession: (meta: { id: string; cwd: string | null }) => void
   /** Envía un mensaje del usuario en la conversación activa (con el cwd del workspace). */
   sendMessage: (text: string, cwd: string | null) => void
+  /** Reintenta un mensaje marcado como no entregado (por su localId = id de la burbuja). */
+  retryMessage: (localId: string) => void
   /** Approve/Reject real de una tool pendiente (manda permission_decision). */
   decide: (requestId: string, decision: UserEditDecision) => void
   setModel: (model: string) => void
   setPermissionMode: (mode: ChatPermissionMode) => void
   setEffort: (effort: ChatEffortSetting) => void
   interrupt: () => void
+  /** Reintento manual de conexión + carga de la tira (botón de la tira de estado). */
+  retryConnection: () => void
 }
 
 /** Sesión de respaldo mientras el store resuelve la lista inicial (evita undefined). */
@@ -61,6 +76,7 @@ export function useChatSession(): ChatApi {
     effort: snap.effort,
     connStatus: snap.connStatus,
     loading: snap.loading,
+    sessionsError: snap.sessionsError,
     modelOptions: MODEL_OPTIONS,
     effortOptions: EFFORT_STEPS,
     selectSession: chatStore.selectSession,
@@ -70,11 +86,15 @@ export function useChatSession(): ChatApi {
     reopenSession: chatStore.reopenSession,
     renameSession: chatStore.renameSession,
     fetchHistory: chatStore.fetchHistory,
+    fetchEngineHistory: chatStore.fetchEngineHistory,
+    openEngineSession: chatStore.openEngineSession,
     sendMessage: chatStore.sendMessage,
+    retryMessage: chatStore.retryMessage,
     decide: chatStore.decide,
     setModel: chatStore.setModel,
     setPermissionMode: chatStore.setPermissionMode,
     setEffort: chatStore.setEffort,
     interrupt: chatStore.interrupt,
+    retryConnection: chatStore.retryConnection,
   }
 }

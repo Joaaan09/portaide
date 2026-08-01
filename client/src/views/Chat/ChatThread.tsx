@@ -10,7 +10,12 @@ import styles from './ChatThread.module.css'
 interface ChatThreadProps {
   session: ChatSession
   onDecide: (requestId: string, decision: UserEditDecision) => void
+  /** Reintenta un mensaje que no llegó al server (burbuja "no entregado"). */
+  onRetryMessage: (localId: string) => void
 }
+
+/** Umbral de "pegado al fondo": por encima, el usuario está leyendo hacia arriba. */
+const STICK_PX = 100
 
 /* Tres puntos --accent con la animación `dot` (DESIGN.md §11) */
 function TypingIndicator() {
@@ -46,26 +51,61 @@ function streamingTick(session: ChatSession): number {
   return tick
 }
 
-export default function ChatThread({ session, onDecide }: ChatThreadProps) {
+export default function ChatThread({ session, onDecide, onRetryMessage }: ChatThreadProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
+  /** true si el usuario está pegado al fondo (si no, NO le movemos el scroll). */
+  const stickRef = useRef(true)
 
-  // Auto-scroll al fondo cuando entra un item, al cambiar de conversación o
-  // mientras crece la respuesta en streaming (tick). No depende del array
-  // completo para no saltar al aprobar/rechazar una card antigua.
+  const handleScroll = () => {
+    const el = scrollRef.current
+    if (!el) return
+    stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < STICK_PX
+  }
+
+  // Al cambiar de conversación siempre al fondo (y se recupera el "pegado").
+  useEffect(() => {
+    stickRef.current = true
+    const el = scrollRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [session.id])
+
+  // Auto-scroll cuando entra un item o mientras crece la respuesta (tick), pero
+  // SOLO si el usuario ya estaba al fondo: si está leyendo hacia arriba se
+  // respeta su posición (el hilo se reconstruye en cada reconexión y sería
+  // insoportable saltar). No depende del array completo para no saltar al
+  // aprobar/rechazar una card antigua.
   const lastItem = session.items[session.items.length - 1]
   const lastItemId = lastItem?.id
   const tick = streamingTick(session)
   useEffect(() => {
     const el = scrollRef.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [session.id, lastItemId, tick])
+    if (el && stickRef.current) el.scrollTop = el.scrollHeight
+  }, [lastItemId, tick])
 
   const renderItem = (item: ChatItem) => {
     switch (item.kind) {
       case 'user':
         return (
           <li key={item.id} className={styles.userItem}>
-            <p className={styles.userBubble}>{item.text}</p>
+            <p
+              className={
+                item.delivery ? `${styles.userBubble} ${styles.userBubblePending}` : styles.userBubble
+              }
+            >
+              {item.text}
+            </p>
+            {item.delivery === 'failed' && (
+              <p className={styles.undelivered}>
+                <span className={styles.undeliveredLabel}>⚠ No entregado</span>
+                <button
+                  type="button"
+                  className={styles.undeliveredRetry}
+                  onClick={() => onRetryMessage(item.id)}
+                >
+                  Reintentar
+                </button>
+              </p>
+            )}
           </li>
         )
       case 'assistant':
@@ -81,7 +121,7 @@ export default function ChatThread({ session, onDecide }: ChatThreadProps) {
   }
 
   return (
-    <div ref={scrollRef} className={styles.thread}>
+    <div ref={scrollRef} className={styles.thread} onScroll={handleScroll}>
       {session.items.length === 0 ? (
         <EmptyState />
       ) : (

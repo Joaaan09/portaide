@@ -1,39 +1,37 @@
 // Vista Terminal (CLAUDE.md §3, DESIGN.md §9): shell real del VPS por pty.
-// Orquesta las pestañas (cada una = un TerminalPane con su propio WebSocket a
-// /ws/terminal), la barra de teclas especiales y la política de modificadores
-// sticky. La cookie de sesión viaja sola (mismo origen).
+// Orquesta las pestañas, la barra de teclas especiales y la política de
+// modificadores sticky. El estado (pestañas, conexión) NO vive aquí: vive en el
+// `terminalStore` (singleton fuera de React) para sobrevivir al remontaje de la
+// vista — AppShell la monta con key={view} — y a bloquear el móvil.
 import '@xterm/xterm/css/xterm.css'
-import { useCallback, useEffect, useRef, useState } from 'react'
-import TerminalPane, { type ConnStatus, type TerminalHandle } from './TerminalPane'
-import TerminalTabs, { type TermTab } from './TerminalTabs'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import TerminalPane, { type TerminalHandle } from './TerminalPane'
+import TerminalTabs from './TerminalTabs'
 import KeyBar from './KeyBar'
 import { applyModifiers, NO_MODS, type Modifiers } from './keys'
+import { tabStatus, terminalStore, type ConnStatus, type TabStatus } from './terminalStore'
+import { useWorkspace } from '../../workspace/WorkspaceProvider'
+import ConnBanner, { useDelayedFlag } from '../../components/ConnBanner/ConnBanner'
 import styles from './TerminalView.module.css'
 
-function makeId(): string {
-  return typeof crypto.randomUUID === 'function'
-    ? crypto.randomUUID()
-    : `t${Date.now().toString(36)}${Math.random().toString(16).slice(2)}`
-}
-
-function makeInitialTabs(): TermTab[] {
-  return [{ id: makeId(), title: 'shell' }]
-}
-
 export default function TerminalView() {
-  const [tabs, setTabs] = useState<TermTab[]>(makeInitialTabs)
-  const [activeId, setActiveId] = useState<string>(() => tabs[0].id)
-  const [statuses, setStatuses] = useState<Record<string, ConnStatus>>({})
+  const snap = useSyncExternalStore(terminalStore.subscribe, terminalStore.getSnapshot)
+  const { workspace } = useWorkspace()
   const [modifiers, setModifiers] = useState<Modifiers>(NO_MODS)
   const [themeVersion, setThemeVersion] = useState(0)
+
+  const { tabs, activeId, conn } = snap
 
   // Registro de handles imperativos por pestaña (para dirigir la terminal activa).
   const handlesRef = useRef<Map<string, TerminalHandle>>(new Map())
   // Espejo de los modificadores para leerlos en callbacks sin cerrar sobre estado viejo.
   const modifiersRef = useRef<Modifiers>(NO_MODS)
   modifiersRef.current = modifiers
-  // Contador monótono para nombrar pestañas nuevas ("shell 2", "shell 3"…).
-  const tabSeqRef = useRef(1)
+
+  // El cwd de los nuevos ptys es el workspace activo (se manda en el `attach`).
+  useEffect(() => {
+    terminalStore.setCwd(workspace)
+  }, [workspace])
 
   const registerHandle = useCallback((id: string, handle: TerminalHandle | null): void => {
     if (handle) handlesRef.current.set(id, handle)
@@ -58,20 +56,16 @@ export default function TerminalView() {
   // Entrada tecleada en la terminal: aplica modificadores armados y desármalos.
   const handleInput = useCallback(
     (id: string, data: string): void => {
-      handlesRef.current.get(id)?.send(applyModifiers(data, modifiersRef.current))
+      terminalStore.sendInput(id, applyModifiers(data, modifiersRef.current))
       clearMods()
     },
     [clearMods]
   )
 
-  const handleStatus = useCallback((id: string, status: ConnStatus): void => {
-    setStatuses((s) => ({ ...s, [id]: status }))
-  }, [])
-
   // --- Teclas especiales -------------------------------------------------
   const onSeq = useCallback(
     (seq: string): void => {
-      handlesRef.current.get(activeId)?.send(seq)
+      terminalStore.sendInput(activeId, seq)
       clearMods()
       focusActive()
     },
@@ -80,7 +74,7 @@ export default function TerminalView() {
 
   const onChar = useCallback(
     (char: string): void => {
-      handlesRef.current.get(activeId)?.send(applyModifiers(char, modifiersRef.current))
+      terminalStore.sendInput(activeId, applyModifiers(char, modifiersRef.current))
       clearMods()
       focusActive()
     },
@@ -91,34 +85,15 @@ export default function TerminalView() {
     setModifiers((m) => ({ ...m, [mod]: !m[mod] }))
   }, [])
 
-  // --- Pestañas ----------------------------------------------------------
-  const addTab = useCallback((): void => {
-    tabSeqRef.current += 1
-    const id = makeId()
-    setTabs((prev) => [...prev, { id, title: `shell ${tabSeqRef.current}` }])
-    setActiveId(id)
-  }, [])
+  // --- Estado de conexión (patrón compartido, DESIGN.md §6.3) --------------
+  // Los puntos de las pestañas usan la MISMA histéresis que la tira: `shownConn`
+  // va por detrás de `conn` al caerse y al instante al recuperarse, así que un
+  // microcorte no los hace parpadear.
+  const degraded = useDelayedFlag(conn !== 'open')
+  const shownConn: ConnStatus = degraded ? conn : 'open'
 
-  const closeTab = useCallback(
-    (id: string): void => {
-      if (tabs.length <= 1) return // siempre queda al menos una terminal
-      setTabs((prev) => prev.filter((t) => t.id !== id))
-      // Si cerramos la activa, pasar a la vecina (izquierda, si la hay).
-      setActiveId((cur) => {
-        if (cur !== id) return cur
-        const idx = tabs.findIndex((t) => t.id === id)
-        const rest = tabs.filter((t) => t.id !== id)
-        return (rest[Math.max(0, idx - 1)] ?? rest[0]).id
-      })
-      handlesRef.current.delete(id)
-      setStatuses((s) => {
-        const n = { ...s }
-        delete n[id]
-        return n
-      })
-    },
-    [tabs]
-  )
+  const statuses: Record<string, TabStatus> = {}
+  for (const tab of tabs) statuses[tab.id] = tabStatus(tab, shownConn)
 
   return (
     <main className={styles.view}>
@@ -127,10 +102,14 @@ export default function TerminalView() {
         tabs={tabs}
         activeId={activeId}
         statuses={statuses}
-        onSelect={setActiveId}
-        onAdd={addTab}
-        onClose={closeTab}
+        onSelect={terminalStore.selectTab}
+        onAdd={terminalStore.addTab}
+        onClose={terminalStore.closeTab}
       />
+
+      {/* Sin esto, un socket caído parece una terminal "parada". Con la conexión
+          sana no ocupa NADA: solo se pinta lo anormal (DESIGN.md §6.3/§9.1). */}
+      <ConnBanner status={conn} onRetry={terminalStore.reconnectNow} />
 
       <div className={styles.panes}>
         {tabs.map((tab) => {
@@ -145,8 +124,9 @@ export default function TerminalView() {
                 id={tab.id}
                 active={isActive}
                 themeVersion={themeVersion}
+                alive={tab.alive}
+                exitCode={tab.exitCode}
                 onInput={(data) => handleInput(tab.id, data)}
-                onStatus={(status) => handleStatus(tab.id, status)}
                 registerHandle={registerHandle}
               />
             </div>

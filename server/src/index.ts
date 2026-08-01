@@ -14,6 +14,10 @@ import { authenticateUpgrade } from './auth/ws.js';
 import { handleTerminalConnection } from './terminal/pty.js';
 import { handleChatConnection } from './chat/ws.js';
 import { runtimeManager } from './chat/runtime.js';
+import { terminalRuntimeManager } from './terminal/runtime.js';
+import { startHeartbeat } from './ws/heartbeat.js';
+import { initPush } from './push/service.js';
+import { wirePushNotifications } from './push/notifier.js';
 
 const app = createApp();
 const server = http.createServer(app);
@@ -69,11 +73,26 @@ wss.on('connection', (socket) => {
   // `ws` responde a los pings del cliente con pong automáticamente.
 });
 
+// --- Heartbeat de los WebSocket -------------------------------------------
+// Un único `wss` atiende el handshake de las tres rutas (/ws, /ws/terminal,
+// /ws/chat), así que `wss.clients` las cubre todas con una sola llamada. Detecta
+// y cierra los sockets zombis del móvil (TCP medio-abierto), que si no quedarían
+// como "subscribers fantasma" en los runtimes de chat y terminal.
+const stopHeartbeat = startHeartbeat(wss);
+
 // --- Arranque ------------------------------------------------------------
 initDb();
 
-server.listen(env.port, () => {
-  console.log(`[portaide] servidor escuchando en http://localhost:${env.port} (${env.nodeEnv})`);
+// Notificaciones Web Push: configura VAPID (si hay claves) y engancha los avisos
+// de "sigue trabajando" / "terminó" a los hooks del chat. Sin claves no rompe:
+// queda desactivado con un log claro.
+initPush();
+wirePushNotifications();
+
+server.listen(env.port, env.host, () => {
+  console.log(
+    `[portaide] servidor escuchando en http://${env.host}:${env.port} (${env.nodeEnv})`
+  );
 });
 
 // Cierre limpio (Docker envía SIGTERM al parar el contenedor)
@@ -81,6 +100,9 @@ function shutdown(signal: string): void {
   console.log(`[portaide] ${signal} recibido — cerrando…`);
   // Aborta los turnos de chat vivos (viven en memoria, desacoplados del WS).
   runtimeManager.shutdown();
+  // Mata los ptys vivos (también desacoplados del WS: sobreviven a la conexión).
+  terminalRuntimeManager.shutdown();
+  stopHeartbeat();
   wss.close();
   server.close(() => process.exit(0));
   // Cortafuegos: si algo queda colgado, salir igualmente

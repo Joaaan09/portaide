@@ -1,0 +1,141 @@
+/* Settings → Notificaciones (DESIGN.md §10.1). Solo tokens --*; el chasis de las
+   filas (row / rowAction / rowValue) lo pone SettingsView.module.css. */
+
+/* Aviso de "instala la PWA": es un dato, no una alarma (sin fondo de error). */
+.hint {
+  margin: 0;
+  padding: 12px 14px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--dim);
+}
+
+/* El gesto concreto, en mono para que destaque como algo literal (DESIGN §2). */
+.gesture {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11.5px;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+/* ---------- Botones de la sección ---------- */
+
+.primaryBtn,
+.secondaryBtn {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background-color 0.15s ease,
+    transform 0.16s ease-out;
+}
+
+.primaryBtn {
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.secondaryBtn {
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--dim);
+}
+
+.primaryBtn:active,
+.secondaryBtn:active {
+  transform: scale(0.99);
+}
+
+.primaryBtn:focus-visible,
+.secondaryBtn:focus-visible {
+  outline: 2px solid var(--accent2);
+  outline-offset: 2px;
+}
+
+.primaryBtn:disabled,
+.secondaryBtn:disabled {
+  border-color: var(--border);
+  background: var(--surface2);
+  color: var(--faint);
+  cursor: default;
+  transform: none;
+}
+
+/* Error de activación: sobrio, en --red (DESIGN §15) */
+.error {
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--red);
+}
+
+/* ---------- Filas de toggle ---------- */
+
+.toggleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
+  /* Menos padding a la derecha: el switch ya aporta 44px de zona táctil. */
+  padding: 8px 8px 8px 14px;
+  transition: opacity 0.15s ease;
+}
+
+/* Sin notificaciones activas los toggles no hacen nada: se atenúan. */
+.toggleRowOff {
+  opacity: 0.5;
+}
+
+.toggleText {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+/* Ayuda por toggle: mono pequeño, terciario (DESIGN §2) */
+.help {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--faint);
+}
+
+/* ---------- Resultado del envío de prueba ---------- */
+
+.testOk,
+.testBad {
+  margin: 10px 0 0;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.testOk {
+  color: var(--green);
+}
+
+.testBad {
+  color: var(--red);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .primaryBtn,
+  .secondaryBtn,
+  .toggleRow {
+    transition: none;
+  }
+
+  .primaryBtn:active,
+  .secondaryBtn:active {
+    transform: none;
+  }
+}

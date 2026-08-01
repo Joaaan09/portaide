@@ -12,6 +12,7 @@ import AppShell from './components/AppShell/AppShell'
 import NavDrawer from './components/NavDrawer/NavDrawer'
 import BottomBar from './components/BottomBar/BottomBar'
 import PullToRefresh from './components/PullToRefresh/PullToRefresh'
+import PushNavigation from './components/PushNavigation/PushNavigation'
 import Splash from './components/Splash/Splash'
 import LoginView from './views/Login/LoginView'
 
@@ -38,6 +39,8 @@ function AuthGate() {
           {/* Solo una de las dos se renderiza (según navMode); la otra retorna null. */}
           <NavDrawer />
           <BottomBar />
+          {/* Tocar una notificación con la app abierta → vista Chat (no renderiza). */}
+          <PushNavigation />
         </OpenFilesProvider>
       </WorkspaceProvider>
     </NavigationProvider>

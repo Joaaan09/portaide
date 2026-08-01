@@ -71,6 +71,11 @@ class SessionRuntime {
   private loaded = false;
   private loadingPromise: Promise<void> | null = null;
 
+  /** Debounce del aviso "sigue trabajando" (se cancela si vuelve a haber attach). */
+  private busyTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Un solo aviso de "sigue trabajando" por turno (no rebuzzear al ir y venir). */
+  private busyNotified = false;
+
   constructor(id: string, manager: RuntimeManager) {
     this.id = id;
     this.manager = manager;
@@ -89,6 +94,13 @@ class SessionRuntime {
             // 'new chat' se trata como sin título (para que el fallback pueda ponerlo).
             if (s.title && s.title !== 'new chat') this.title = s.title;
           }
+        } catch (err) {
+          // Un fallo de SQLite NO puede tumbar el proceso: esta promesa se espera
+          // desde `void`s en ws.ts, y en Node 20 un rechazo sin manejar mata el
+          // servidor entero —justo lo que no puede pasar en una herramienta que
+          // debe seguir trabajando con el móvil apagado—. Se sigue con el hilo
+          // vacío en memoria; el siguiente `persistNow` reintentará escribir.
+          console.error(`[chat] no se pudo cargar la sesión ${this.id}:`, err);
         } finally {
           this.loaded = true;
         }
@@ -120,10 +132,44 @@ class SessionRuntime {
     // (ni se pierde ni se duplica).
     sendTo(ws, this.snapshotFrame());
     this.subscribers.add(ws);
+    // Vuelve a haber alguien mirando: se cancela el aviso de "sigue trabajando".
+    this.clearBusyTimer();
   }
 
   detach(ws: WebSocket): void {
     this.subscribers.delete(ws);
+    this.scheduleBusyNotification();
+  }
+
+  // --- Aviso "sigue trabajando" (push) ---------------------------------------
+  // El usuario se va (cierra la app, bloquea el móvil, se le cae el socket) con
+  // el turno vivo → se le avisa. Con DEBOUNCE (env.pushWorkingDelayMs, ~20 s)
+  // porque en móvil el socket se cae y se recupera constantemente: sin él, cada
+  // microcorte de red haría vibrar el teléfono (en iOS no hay push silencioso).
+
+  private clearBusyTimer(): void {
+    if (this.busyTimer) {
+      clearTimeout(this.busyTimer);
+      this.busyTimer = null;
+    }
+  }
+
+  /** ¿El turno está vivo (trabajando o esperando slot)? */
+  private isBusy(): boolean {
+    return this.status === 'running' || this.status === 'queued';
+  }
+
+  private scheduleBusyNotification(): void {
+    if (this.busyTimer || this.busyNotified) return;
+    if (this.subscribers.size > 0 || !this.isBusy()) return;
+    this.busyTimer = setTimeout(() => {
+      this.busyTimer = null;
+      // Se revalida al disparar: en 20 s el usuario pudo volver o el turno acabar.
+      if (this.subscribers.size > 0 || !this.isBusy()) return;
+      this.busyNotified = true;
+      this.manager.notifyBusyWithoutSubscribers(this.id, this.title);
+    }, env.pushWorkingDelayMs);
+    this.busyTimer.unref();
   }
 
   private broadcast(frame: object): void {
@@ -151,25 +197,70 @@ class SessionRuntime {
   /** Recibe un mensaje del usuario: lo arranca o lo encola (la burbuja del usuario
    *  se registra al ARRANCAR el turno, no aquí, para que el orden del log sea
    *  correcto con la cola: user1 → assistant1 → user2 → assistant2). */
+  /**
+   * ¿Ya conocemos este `localId`? Se busca en los dos únicos sitios donde puede
+   * estar un mensaje aceptado: el log (la burbuja del usuario se registra al
+   * ARRANCAR el turno, con `id = localId`) y la cola de pendientes.
+   */
+  private hasMessage(localId: string): boolean {
+    if (this.accepted.has(localId)) return true;
+    if (this.events.some((ev) => ev.type === 'user' && ev.id === localId)) return true;
+    return this.queue.some((m) => m.localId === localId);
+  }
+
+  /**
+   * `localId`s aceptados que TODAVÍA no están en el log. Cubre la ventana en la
+   * que un turno espera slot de concurrencia (`acquireSlot`): ahí el mensaje no
+   * está ni en `events` (la burbuja se registra al arrancar) ni en `queue` (esa
+   * solo se usa si ya hay un turno vivo), así que sin este registro el guard de
+   * idempotencia no veía nada y un reenvío arrancaba un SEGUNDO turno.
+   */
+  private accepted = new Set<string>();
+
   async enqueueMessage(msg: IncomingMessage): Promise<void> {
     await this.ensureLoaded();
 
-    if (this.turn) {
-      // Ya hay un turno vivo en ESTA sesión: se encola y se procesa al terminar.
+    // IDEMPOTENCIA por `localId`. El cliente móvil reenvía lo que no le llegó
+    // confirmado (el socket muere sin avisar y el `send` se pierde en silencio),
+    // así que un mismo mensaje puede llegar dos veces: la primera se encoló pero
+    // el `ack` no cruzó. Sin este guard, el reenvío ejecutaría el turno DOS veces
+    // —y con `bypassPermissions` eso es trabajo real duplicado sobre el disco—.
+    if (this.hasMessage(msg.localId)) return;
+
+    // ¿Hay ya trabajo en marcha en ESTA sesión? `this.turn` NO basta: se asigna
+    // después de esperar slot de concurrencia, así que entre medias parecería
+    // libre y dos mensajes distintos arrancarían DOS turnos en paralelo sobre el
+    // mismo `claudeSessionId` —con `bypassPermissions`, dos agentes escribiendo
+    // el mismo repo a la vez—. `accepted` cubre justo esa ventana.
+    const busy = this.turn !== null || this.accepted.size > 0;
+
+    // Se marca como aceptado AQUÍ, antes de cualquier `await`: entre la
+    // aceptación y la burbuja en el log hay una espera de slot en la que el
+    // mensaje sería invisible para el guard (ver `accepted`).
+    this.accepted.add(msg.localId);
+
+    if (busy) {
+      // Se encola y se procesa al terminar el turno en curso. Se reemite el
+      // status ACTUAL (no se fuerza 'running': el turno de delante puede seguir
+      // esperando slot, y decir 'running' sería mentir) solo para que el cliente
+      // reciba el `queueLength` nuevo.
       this.queue.push(msg);
-      this.setStatus('running'); // sigue running, pero cambia queueLength
+      this.setStatus(this.status);
       return;
     }
     void this.startTurn(msg);
   }
 
   private async startTurn(msg: IncomingMessage): Promise<void> {
+    // Turno nuevo (también los de la cola): vuelve a poder avisarse de que trabaja.
+    this.busyNotified = false;
     this.setStatus('queued'); // esperando slot de concurrencia global
     const release = await this.manager.acquireSlot();
 
     // Pudo pararse (stop) mientras esperábamos el slot.
     if (this.stopped) {
       this.stopped = false;
+      this.accepted.delete(msg.localId); // nunca llegó a ejecutarse
       release();
       this.setStatus('idle');
       return;
@@ -178,6 +269,9 @@ class SessionRuntime {
     // Burbuja del usuario al log (evento autoritativo) + broadcast, AL arrancar.
     const userEv: LogEvent = { type: 'user', id: msg.localId, text: msg.text };
     this.appendEvent(userEv);
+    // Ya vive en el log: `hasMessage` lo encontrará ahí y el registro temporal
+    // deja de hacer falta (así `accepted` no crece sin límite).
+    this.accepted.delete(msg.localId);
     this.broadcast({ type: 'event', sessionId: this.id, event: userEv });
 
     // Título de fallback por el primer mensaje (para sesiones puramente en 2º plano).
@@ -218,6 +312,10 @@ class SessionRuntime {
   private stopped = false;
 
   private onTurnDone(): void {
+    // El turno ya no está vivo: cancela el aviso pendiente de "sigue trabajando"
+    // (si no, llegaría un "trabajando" JUSTO DESPUÉS del "terminó").
+    this.clearBusyTimer();
+
     // ¿Mensajes encolados durante el turno? Procesa el siguiente.
     const next = this.queue.shift();
     if (next) {
@@ -226,20 +324,29 @@ class SessionRuntime {
     }
     if (this.status !== 'error') this.setStatus('idle');
     this.persistNow();
-    // Turno acabado sin nadie mirando esta sesión (app en 2º plano) → hook de push
-    // (lo cablea la Pieza C; aquí es no-op salvo que se registre).
+    // Turno acabado sin nadie mirando esta sesión (app en 2º plano) → push
+    // ("terminó" / "falló"). Lo consume push/notifier.ts.
     if (this.subscribers.size === 0) {
-      this.manager.notifyIdleWithoutSubscribers(this.id, this.title);
+      this.manager.notifyIdleWithoutSubscribers(this.id, this.title, this.status);
     }
   }
 
   /** Aborta el turno vivo y vacía la cola (acción explícita del usuario). */
   stop(): void {
+    // Los encolados se descartan: dejan de estar "aceptados" (si el cliente
+    // reenviara uno después, es un mensaje nuevo y debe poder ejecutarse).
+    for (const m of this.queue) this.accepted.delete(m.localId);
     this.queue = [];
     if (this.turn) {
       this.turn.interrupt(); // onDone → release + onTurnDone
-    } else {
-      this.stopped = true; // por si está esperando slot
+    } else if (this.accepted.size > 0) {
+      // Solo si hay un turno esperando slot (es a ese al que hay que abortar).
+      // Antes se armaba SIEMPRE, y el flag se quedaba pegado: un Stop con la
+      // sesión ya parada (p. ej. doble toque en ■) hacía que el SIGUIENTE
+      // mensaje del usuario se descartara en silencio —con `ack` incluido, así
+      // que el cliente lo daba por entregado y la burbuja se quedaba en
+      // "enviando" para siempre—.
+      this.stopped = true;
     }
   }
 
@@ -305,11 +412,16 @@ function sendTo(ws: WebSocket, frame: object): void {
   if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(frame));
 }
 
+/** Firma de los hooks de notificación (los consume push/notifier.ts). */
+export type IdleHook = (sessionId: string, title: string | undefined, status: TurnStatus) => void;
+export type BusyHook = (sessionId: string, title: string | undefined) => void;
+
 class RuntimeManager {
   private runtimes = new Map<string, SessionRuntime>();
   private running = 0;
   private waiters: Array<() => void> = [];
-  private idleHook: ((sessionId: string, title?: string) => void) | null = null;
+  private idleHook: IdleHook | null = null;
+  private busyHook: BusyHook | null = null;
 
   private get maxConcurrent(): number {
     return env.chatMaxConcurrentTurns;
@@ -351,17 +463,34 @@ class RuntimeManager {
     };
   }
 
-  /** Registra el hook de "turno terminado sin subscribers" (lo usa la Pieza C: push). */
-  onIdleWithoutSubscribers(hook: (sessionId: string, title?: string) => void): void {
+  /** Hook "el turno TERMINÓ y no había nadie mirando" → push "terminó"/"falló". */
+  onIdleWithoutSubscribers(hook: IdleHook): void {
     this.idleHook = hook;
   }
 
-  notifyIdleWithoutSubscribers(sessionId: string, title?: string): void {
-    this.idleHook?.(sessionId, title);
+  notifyIdleWithoutSubscribers(sessionId: string, title: string | undefined, status: TurnStatus): void {
+    // Al apagar el servidor los turnos se abortan: eso NO es "terminó" (sería
+    // mentirle al usuario en cada redeploy), así que no se notifica.
+    if (this.shuttingDown) return;
+    this.idleHook?.(sessionId, title, status);
   }
+
+  /** Hook "el usuario se fue y el turno SIGUE vivo" (ya pasado el debounce del
+   *  runtime) → push "sigue trabajando". */
+  onBusyWithoutSubscribers(hook: BusyHook): void {
+    this.busyHook = hook;
+  }
+
+  notifyBusyWithoutSubscribers(sessionId: string, title?: string): void {
+    if (this.shuttingDown) return;
+    this.busyHook?.(sessionId, title);
+  }
+
+  private shuttingDown = false;
 
   /** Aborta todos los turnos vivos (cierre limpio del proceso). */
   shutdown(): void {
+    this.shuttingDown = true;
     for (const rt of this.runtimes.values()) rt.abort();
   }
 }

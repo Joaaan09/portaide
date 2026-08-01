@@ -5,6 +5,31 @@
 
 ## Abiertos
 
+- [ ] **2026-07-26 · menor · recursos** — `RuntimeManager.runtimes` (chat) **no expulsa nunca**: `get(id)`
+  crea un runtime para cualquier string y se llama también desde `detach`/`stop`/`set_model`, así que cada
+  sesión vista mantiene su log completo en RAM de por vida. Preexistente; el multi-pestaña y las
+  reconexiones lo multiplican. Evictar los que no tengan subscribers ni turno y ya estén persistidos.
+  `server/src/chat/runtime.ts`. (El revisor lo consideró NO bloqueante para el deploy: un solo usuario.)
+- [ ] **2026-07-26 · menor · UX** — El probe del terminal (sondeo tras 8 s sin eco, p. ej. al teclear una
+  contraseña en `sudo`) provoca un `snapshot` y `TerminalPane` hace `reset()` + repintado completo del
+  scrollback con salto al fondo. Es mucho mejor que la alternativa anterior (cortar el socket y perder las
+  teclas), pero convendría que el probe use una trama que no dispare snapshot, o repintar por diff de
+  sufijo. `client/src/views/Terminal/terminalStore.ts`, `TerminalPane.tsx`.
+- [ ] **2026-07-26 · menor · recursos** — Los **trabajos en segundo plano de la shell** (`npm run dev &`)
+  sobreviven al cierre de la pestaña y al `shutdown`: el SIGKILL va al `bash -l` y sus hijos quedan
+  reparentados. Es la semántica estándar de una shell matada, no un fallo, pero en este VPS significa CPU
+  comida sin que se vea. Requeriría gestión de process groups. `server/src/terminal/runtime.ts`.
+- [ ] **2026-07-26 · menor · recursos** — Detectado un proceso **`[claude] <defunct>` (zombi) del 6 de
+  julio** en el backend desplegado, con padre `node dist/index.js`. Ajeno al trabajo de esta sesión
+  (versión antigua en producción), pero sugiere que el puente no siempre cosecha el hijo `claude`.
+  Revisar al tocar `server/src/chat/bridge.ts`.
+- [ ] **2026-07-26 · menor · robustez** — El recorte del ring buffer de terminal es UTF-8-safe pero **no
+  ANSI-safe**: el snapshot puede empezar a mitad de una secuencia de escape (basura o atributo de color
+  colgado en la primera línea). `server/src/terminal/runtime.ts`.
+- [ ] **2026-07-26 · menor · push** — Si el socket muere **antes** de que el turno pase a `running`/
+  `queued`, no se programa el aviso de "sigue trabajando" (el de "terminó" sí llega).
+  `server/src/chat/runtime.ts`.
+
 - [x] **2026-07-02 · menor · a11y** — (OBSOLETO 2026-07-03) `NavIsland` **eliminada** al migrar a
   drawer `☰` + barra inferior (ver decisiones.md). El bug del `aria-expanded` de la píldora ya no aplica.
 - [x] **2026-07-02 · menor · a11y** — (RESUELTO POR RETIRADA 2026-07-03) La falta de focus-trap era de

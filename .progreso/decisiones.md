@@ -4,6 +4,249 @@
 
 ---
 
+### 2026-08-01 · UI del historial del engine cableada (cierra el "UI PENDIENTE" del ADR 2026-07-06)
+
+**Contexto (usuario):** con Tailscale + backend-en-host ya en marcha, seguía sin ver "las conversaciones
+que tengo en el servidor". No era transporte: el **backend del historial del engine ya estaba hecho y
+verificado** (ADR 2026-07-06) pero su UI quedó a medias porque en su día el cliente no hablaba
+`attach/snapshot`. Ese bloqueo se levantó en la 8ª sesión, así que solo faltaba el cableado.
+
+**Decisión (Modo Directo, sin tocar el backend):** el panel de historial pasa a **2 secciones** —
+**PortaIDE** (SQLite, `scope=all`, como estaba) y **En el servidor · Claude Code** (transcripts del
+engine del proyecto abierto, incl. las de VS Code). El engine es **por proyecto** → la sección usa el
+`cwd` del workspace activo; sin proyecto, hint. **Dedup** de la sección del servidor por
+`id ∪ claudeSessionId` de las sesiones de PortaIDE (toda conversación nacida en PortaIDE también deja
+un `.jsonl`, si no se filtraría duplicada).
+
+**Cómo se abre una sesión del engine (encaje con el `SessionRuntime`):** `openEngineSession` descarga el
+transcript ya convertido a `LogEvent[]` (`GET …/engine/sessions/:id?cwd`), lo **materializa en SQLite**
+(`PATCH /sessions/:id` upsert con `thread` + `claudeSessionId`, **reusando el sessionId del engine como
+id de la pestaña** → dedup natural) y hace `attach`. Clave: el `await` del PATCH es obligatorio porque el
+runtime lee el hilo de SQLite en `ensureLoaded()` durante el `attach`; la fila debe existir antes. El
+snapshot repinta el hilo y `resume` (= `claudeSessionId`) continúa la conversación.
+
+**Archivos (solo cliente):** `chatStore.ts` (`fetchEngineHistory`, `openEngineSession`, `fetchHistory`
+ahora expone `claudeSessionId`), `useChatSession.ts`, `ChatView.tsx` (pasa `workspace` como cwd),
+`ChatHistory.tsx` + `.module.css`. Typecheck + build verdes.
+
+**Alternativas descartadas:** endpoint de "import" server-side que materialice el transcript sin round-trip
+del hilo (más limpio en datos, pero toca el backend ya verificado; para 1 usuario abriendo 1 conversación
+a demanda el triple salto server→client→server→client es irrelevante); fusionar ambas fuentes en una sola
+lista (confuso: la misma conversación con dos identidades). **Límite conocido:** si el `.jsonl` crece por
+fuera tras haber abierto la sesión en esta ejecución del server, el runtime ya cargado no relee (edge
+aceptable v1).
+
+---
+
+### 2026-07-31 · Backend en el HOST (systemd), no en Docker — resuelve el "usar mi VPS desde la app"
+
+**Contexto (conversación con el usuario).** Pidió pasar PortaIDE a SSH (poner IP+usuario+contraseña en
+Settings). Al desmenuzarlo caímos en que **PortaIDE vive en el mismo VPS al que se conectaría** → SSH
+sería contra sí mismo (justo lo que ya descartó el ADR 2026-07-26). El problema real no era el
+transporte, era que el backend corre **dentro de un contenedor** sin `docker`, sin la shell del host y
+con FS limitado a lo montado. Por eso no podía ni auto-desplegarse.
+
+**Decisión (elegida por el usuario, alcance = herramienta personal / un solo usuario):** mover el
+**backend al host como servicio systemd**; el **frontend sigue en Docker** tras NPM. Descartada la
+opción de solo montar el socket de Docker (la B): seguía dejando la Terminal encerrada en el contenedor,
+no resolvía "usar el VPS entero".
+
+**Por qué SSH NO:** con PortaIDE en el mismo VPS, SSH no aporta nada y añade complejidad + un sitio donde
+guardar credenciales. SSH solo ganaría para **multi-VPS** (conectar a OTRAS máquinas), que sigue siendo
+futuro. Si algún día se hace, con **clave dedicada** (nunca contraseña guardada), ver ADR 2026-07-26.
+
+**Implementado (repo, typecheck verde):**
+- `docker-compose.yml` → solo `frontend` + `extra_hosts: host.docker.internal:host-gateway` (backend
+  fuera; volumen `portaide_data` y red `internal` eliminados).
+- `client/nginx.conf` → `/api` y `/ws` hacen proxy a `http://host.docker.internal:4100` (estático, vía
+  /etc/hosts; sin el resolver de Docker). **NPM no cambia**: sigue apuntando a `portaide-frontend`.
+- `server/src/config/env.ts` + `index.ts` → nuevo `HOST` (default `0.0.0.0`) para que el contenedor del
+  frontend alcance el backend por `host-gateway`.
+- `deploy/portaide-backend.service` (unit), `scripts/deploy.sh` (deploy host/desde la propia Terminal),
+  `deploy/README.md` (guía paso a paso), `.env.example` (HOST + SQLITE_PATH del host).
+- **Sin cambios en terminal/chat**: el pty lanza `process.env.SHELL -l` heredando `HOME`/env → en el host
+  es la shell real de `kuoyii` (con `clauded`, docker, logs). El chat sigue con el Agent SDK in-process y
+  aprobaciones reales. NO se pierde nada del chat actual.
+
+**Coste asumido (CLAUDE.md §11):** el borde pasa de proteger "una cajita" a **el VPS entero**, y corre
+`clauded`. Por eso la migración **exige paso 0 = endurecer el borde** (recomendado Tailscale; alt. 2FA/
+passkey o mTLS en NPM) y **paso 1 = UFW cerrando el 4100** al exterior. El backend en 0.0.0.0 es un
+proceso del host → UFW sí lo gobierna. Documentado en `deploy/README.md`.
+
+**Pendiente = acción del host (no ejecutable desde el contenedor):** Tailscale, `npm ci && build` en el
+host, systemd `enable --now`, UFW, rebuild del frontend, bajar el backend Docker viejo. Pasos exactos en
+`deploy/README.md`.
+
+---
+
+### 2026-07-26 · Terminal en 2º plano: `TerminalRuntime` (el pty deja de morir con el WebSocket)
+
+**Problema (reportado por el usuario):** "bloqueo el móvil o salgo de la app, vuelvo y se ve que ha parado".
+
+**Diagnóstico (verificado, no deducido).** Se midió en el VPS real cortando el socket a la fuerza
+(`terminate()`, como un móvil que bloquea pantalla):
+
+- **Chat: NO se paraba.** El `SessionRuntime` (ADR 2026-07-03) ya funcionaba: 60 s de trabajo (`TICK-1`…
+  `TICK-10`) completados sin ningún cliente conectado, y el `snapshot` al reconectar traía todo.
+- **Terminal: SÍ moría.** `pty.ts` mataba el proceso en `ws.on('close')`, no había registro de ptys, ni
+  scrollback en servidor, ni id de sesión. Peor: `AppShell` monta la vista activa con `key={view}`, así
+  que **cambiar de vista ya mataba la terminal** y lo que estuviera ejecutando (`clauded` incluido).
+- La salida del pty **se descartaba** si el socket no estaba `OPEN` (no se acumulaba en ningún sitio).
+
+**Decisión.** Replicar en la terminal el patrón que el chat ya tenía: `server/src/terminal/runtime.ts` con
+`TerminalRuntime` + `TerminalRuntimeManager` singleton. El pty pertenece al runtime, **no** al socket;
+`/ws/terminal` pasa a transporte **multiplexado por `sessionId`** (`attach|input|resize|detach|kill` →
+`snapshot|data|exit|error`). Cerrar el socket = `detach`, nunca matar.
+
+- **Ring buffer** de 256 KiB por sesión (`TERMINAL_SCROLLBACK_BYTES`), recorte UTF-8-safe: al reengancharte
+  el `snapshot` repinta lo que pasó mientras no estabas.
+- **Sesiones muertas retenidas**: si la shell muere sin nadie mirando, el runtime NO se borra; el siguiente
+  `attach` recibe `snapshot{alive:false, exitCode, data}` y **no** se suscribe. Motivo: si tu `clauded`
+  revienta con el móvil apagado tienes que **enterarte**, no encontrarte una shell nueva como si nada.
+- **Cota `TERMINAL_MAX_SESSIONS` = 6** y reaper de huérfanos a las **2 h** (`TERMINAL_ORPHAN_TTL_MS`, generoso
+  a propósito: el caso de uso es dejar tareas largas corriendo). La cota cuenta solo sesiones vivas.
+- Arreglado de paso: el `cwd` del cliente se ignoraba (la terminal siempre arrancaba en `FS_ROOT`); ahora
+  viaja en el `attach` y se resuelve con `resolveCwd` **dentro del manager** (nadie puede saltarse `FS_ROOT`).
+
+**Sin retrocompatibilidad**: el protocolo viejo (`output`, tramas sin `sessionId`) desaparece.
+
+**Correcciones tras la revisión (mismo día, fallos REPRODUCIDOS):**
+
+- **Identidad de runtime, nunca borrado "por id".** El borrado diferido del runtime muerto (30 s) borraba del
+  mapa a su **sucesor** cuando se reiniciaba una pestaña (`kill` → `attach` con el mismo id). Efecto: la
+  terminal seguía pintando pero dejaba de aceptar entrada **sin aviso**, y el pty quedaba huérfano —invisible
+  para el reaper, sin contar para la cota y **sobreviviendo a `shutdown()`**—. Ahora `remove(sessionId, owner)`
+  solo borra si la entrada del mapa sigue siendo ese runtime, y un runtime `discarded` **enmudece** (no emite
+  tramas ni programa borrados), de modo que un `exit` rezagado del pty viejo no puede aterrizar en la
+  pestaña nueva.
+- **Cerrar mata de verdad: SIGHUP → SIGKILL.** `kill()` escalaba solo SIGHUP, así que una shell con
+  `trap '' HUP` sobrevivía al cierre explícito Y al apagado del servidor. Ahora se escala a SIGKILL (2,5 s en
+  cierre normal, 250 ms en `shutdown()`, con guarda anti-reuso de PID y un hook `process.once('exit')` que
+  remata a los que no confirmaron su muerte). **Motivo:** cerrar es una acción explícita del usuario o del
+  recolector; una shell que ignora la señal educada no es un caso a respetar, es CPU comida en un VPS que ya
+  se congela. El `exit` de un cierre explícito pasa a emitirse **en el acto** con `exitCode: null`.
+
+---
+
+### 2026-07-26 · El cliente móvil no detectaba el socket muerto (causa real del "se ha parado" en el Chat)
+
+**Hallazgo.** El backend del chat estaba bien; el fallo era del cliente. En móvil el WebSocket queda **zombi
+en `readyState === OPEN`** (pantalla bloqueada, WiFi↔datos): `onclose` no dispara hasta pasados minutos,
+`connect()` hacía early-return por verlo "OPEN", y **no existía ni un listener de `visibilitychange` /
+`online` / `pageshow`** en todo el cliente. Resultado: el hilo dejaba de crecer = indistinguible de "parado".
+Además, si fallaba el `GET /api/chat/sessions` inicial (típico al relanzar la PWA con la red fría), el
+cliente **fabricaba una sesión vacía** y no reintentaba nunca: parecía que la conversación se había perdido.
+
+**Decisiones.**
+
+1. **Salud por tramas, no por `readyState`**: `lastFrameAt` + reconexión forzada si el socket lleva ~20 s mudo
+   al volver a primer plano. Listeners de ciclo de vida en Chat y Terminal. Backoff exponencial con jitter
+   (500 ms → 15 s). Heartbeat **ping/pong del servidor** (`server/src/ws/heartbeat.ts`, 30 s) que hace
+   `terminate()` de los sockets que no responden: sin esto el server cree que sigues mirando (subscribers
+   fantasma) y nunca podría dispararse el push.
+2. **`ack` del servidor para los mensajes de chat** (`{type:'ack', sessionId, localId}` en `chat/ws.ts`). El
+   cliente reenvía lo no confirmado al reconectar, con dedupe por `localId`. **Alternativa descartada:** que
+   el cliente dedujera del `queueLength` del snapshot si el server ya tenía el mensaje — adivinar mal
+   **duplica un turno entero del agente** (con `bypassPermissions`, trabajo real ejecutado dos veces).
+3. **Estado visible**: tira de conexión (DESIGN §6.3), **un solo patrón compartido** por Chat y Terminal —
+   oculta cuando todo va bien, visible solo en `connecting`/`disconnected` tras 800 ms. En una pantalla de
+   móvil no se gastan 30 px permanentes en confirmar lo normal. Burbuja con estado *enviando* / *No
+   entregado* + reintentar: nunca se finge un envío.
+4. **Ids de item deterministas** (índice del evento en el log) y auto-scroll solo si ya estabas al fondo:
+   reconectar ya no te tira del sitio donde estabas leyendo.
+
+**Correcciones tras la revisión (mismo día):**
+
+- **El guard de idempotencia estaba ROTO tal y como se escribió primero.** Comprobaba el log y la cola, pero el
+  servidor registra la burbuja del usuario **después** de esperar slot de concurrencia
+  (`CHAT_MAX_CONCURRENT_TURNS`, default 3): durante esa espera el mensaje no estaba en ninguno de los dos
+  sitios y un reenvío arrancaba un **segundo turno**. Arreglado con un `Set` `accepted` marcado **antes** del
+  `await`, purgado al entrar la burbuja al log, al abortarse esperando slot y al vaciarse la cola con `stop()`.
+  Reproducido antes y después: con el slot ocupado, dos envíos del mismo `localId` → **una** burbuja.
+- **`ack` = recepción, NO entrega al hilo.** Borrar el pendiente al recibir el `ack` hacía que la burbuja
+  del usuario **apareciera y se borrara** mientras el turno esperaba slot (y si el server caía en esa ventana,
+  el mensaje se perdía sin rastro). Ahora el `ack` solo marca `acked` (deja de reenviarse y de caducar) y la
+  burbuja vive hasta que llega su evento `user` del log — mismo id, relevo sin parpadeo ni duplicado.
+- **Una pestaña de terminal muerta no revive sola**: `attach` no engancha pestañas con `alive:false` (solo las
+  revive `restartTab`, acción explícita). Antes, cualquier reconexión pasados 30 s creaba una shell nueva y
+  hacía desaparecer el aviso de "la shell terminó".
+- **El watchdog de la terminal no corta por falta de eco**: escribir una contraseña (`sudo`, `ssh`, `read -s`)
+  no genera eco y el socket se daba por muerto, perdiendo las teclas. Ahora sondea con un `attach` y solo
+  declara zombi si no hay respuesta. Se prioriza **no cortar en falso** sobre detectar rápido.
+- **Exclusión mutua real por sesión (2ª revisión).** El guard de encolado era `if (this.turn)`, pero
+  `this.turn` no se asigna hasta después de esperar slot: dos mensajes DISTINTOS llegados en esa ventana
+  arrancaban **dos turnos en paralelo sobre el mismo `claudeSessionId`** —con `bypassPermissions`, dos
+  agentes escribiendo el mismo repo a la vez—. Ahora el guard es `this.turn !== null || accepted.size > 0`.
+- **El flag `stopped` ya no es pegajoso (2ª revisión).** `stop()` con la sesión ya parada (p. ej. doble
+  toque en ■) lo dejaba armado para siempre, y el **siguiente** mensaje del usuario se descartaba en
+  silencio —con `ack` enviado, así que el cliente lo daba por entregado y la burbuja se quedaba en
+  "enviando" indefinidamente—. Ahora solo se arma si hay de verdad un turno esperando slot.
+- **Un fallo de SQLite ya no tumba el proceso** (`try/catch` en `ensureLoaded` + `.catch` en los `void` de
+  `ws.ts`): en Node 20 un rechazo sin manejar mata el servidor, justo lo que no puede pasar en una
+  herramienta que debe seguir trabajando con el móvil apagado.
+
+---
+
+### 2026-07-26 · Notificaciones push en iOS: solo con la PWA instalada (IMPLEMENTADO, sin probar en dispositivo)
+
+**Decisión del usuario:** iPhone; avisos de **"terminó el trabajo"** y **"está trabajando"**.
+
+**Restricciones que condicionan el diseño** (no son opinables, son de la plataforma):
+
+- Safari **solo** entrega Web Push si la PWA está **instalada en la pantalla de inicio** (iOS 16.4+). En
+  Safari normal no hay push. Settings debe **detectar el modo standalone** y explicarlo, no fallar en silencio.
+- **iOS no tiene notificaciones silenciosas**: "está trabajando" sonará/vibrará como cualquier otra. Se
+  implementa con `tag` por sesión (la de "terminó" la reemplaza) y **desactivada por defecto**; "terminó" sí
+  activa por defecto.
+- Requiere **Service Worker**: creado en `client/public/sw.js`, **solo para push** (sin caché ni precaching;
+  la app no pasa a offline-first).
+
+**Implementación:** `server/src/push/*` (servicio VAPID, tabla `push_subscriptions`, rutas bajo el gate de
+auth, notifier) + panel en `client/src/views/Settings/NotificationsPanel.tsx`. Consume dos hooks del
+`SessionRuntime`: el ya existente `onIdleWithoutSubscribers` ("terminó"/"falló") y uno nuevo,
+`onBusyWithoutSubscribers` ("sigue trabajando", con debounce de `PUSH_WORKING_DELAY_MS` = 20 s que se cancela
+si vuelves antes). Mismo `tag = sessionId`: la de "terminó" **reemplaza** a la de "trabajando". Durante
+`shutdown()` no se notifica (si no, cada redeploy mandaría un "ha terminado" falso).
+
+**Depende del heartbeat**: sin él los sockets fantasma harían creer al server que sigues mirando y ninguno de
+los dos hooks dispararía. Los toggles viven **en el servidor** (tabla), no en el SW: iOS obliga a mostrar todo
+push que llegue, así que filtrar en el cliente no sirve de nada.
+
+---
+
+### 2026-07-26 · SSH con usuario/IP/contraseña en Settings: NO (la premisa era falsa)
+
+**Petición del usuario:** pasar a SSH, con usuario, IP y contraseña en Settings, "para ver los logs del
+proyecto, porque si trabajo desde PortaIDE eso se queda en el contenedor Docker".
+
+**La premisa no se sostiene (verificado en el contenedor):**
+
+```
+/home/kuoyii/.claude  -> /home/kuoyii/.claude  (rw)
+/home/kuoyii/servers  -> /home/kuoyii/servers  (rw)
+```
+
+Los transcripts de Claude Code y los archivos de los proyectos **son los mismos ficheros que se ven por SSH**.
+Lo único que falta es **acceso a Docker**: en `docker-compose.yml:49` el montaje del socket está **comentado**.
+
+**Opciones, ordenadas por lo que se defendería:**
+
+1. **Backend en el host (systemd), sin Docker.** Si el objetivo es "que sea idéntico a mi SSH", esto *es* eso:
+   mismo usuario, shell, alias, Docker y logs. Coste: se pierde el aislamiento y el `compose up`.
+2. **Descomentar el socket de Docker** + `docker-cli` en la imagen. Dos líneas. Coste real: quien controla el
+   socket **es root en el host**; sube el techo de daño de "mis proyectos" a "el VPS entero".
+3. **SSH**: para ver logs es dar la vuelta al mundo (el backend ya corre *en* ese VPS: sería SSH a sí mismo).
+
+**Rechazado en cualquier caso: guardar la contraseña del servidor en la app.** Un compromiso del borde pasaría
+de costar "los proyectos" a costar **la contraseña del usuario del VPS**, reutilizable en otros sitios.
+Cifrarla en reposo es autoengaño (el backend necesita descifrarla, la clave vive al lado). Si algún día se va a
+SSH, será con **clave dedicada** restringible por `from=`/`command=` en `authorized_keys`.
+
+**Dónde SSH sí gana:** conectar a **otros** servidores (multi-VPS, ya listado como futuro en el ADR
+"Arquitectura v1"). Eso es una feature distinta de "ver mis logs" y se decidirá como tal.
+
+---
+
 ### 2026-07-06 · Historial del chat: leer los transcripts REALES del engine (`~/.claude/projects`) — BACKEND
 
 **Problema (pedido por el usuario):** el panel de historial solo listaba conversaciones creadas DENTRO de
@@ -469,13 +712,7 @@ Al ampliar Settings (antes casi un stub: solo "Account") se decidió, con el usu
   acceso solo a `servers/` se queda corto — trade-off de seguridad, decidir al usarlo.
 - **2FA / passkeys** y colección `users` en Mongo: endurecer auth si el borde lo pide.
 - **Multi-VPS por SSH**: si algún día se retoma, definir aquí el modelo.
-- **Revalorar SSH / backend-en-host (2026-07-06, reabierto por el usuario)** — dado que **todo corre
-  DENTRO del contenedor** (sin `docker`/socket → no auto-deploy; Terminal = shell del contenedor sin
-  `sudo` ni acceso real al host; FS limitado a lo montado), sopesar mover a un modelo con acceso al host:
-  **(a)** backend como servicio del host (systemd) con solo frontend en Docker — cambio localizado, ya
-  citado como "alternativa viva" en el ADR de despliegue; **(b)** puente SSH del contenedor al host.
-  **Veredicto previo sigue en pie** (log 2026-07-02 + ADR "RESTRICCIÓN A REVISAR" abajo): esto es un
-  argumento de **capacidad/DX, no de seguridad** — SSH/host **no es más seguro**, amplía el *blast radius*
-  de una brecha del borde de "cajita aislada" a "VPS entero (incl. smartpeak y demás)". Si se prioriza la
-  capacidad, el **orden correcto** es endurecer el borde primero (2FA/passkey, o VPN Tailscale/mTLS en NPM)
-  y **luego** abrir permisos. Decisión pendiente del usuario.
+- **~~Revalorar SSH / backend-en-host~~ → RESUELTO 2026-07-31 (opción a).** Elegido: backend en el host
+  (systemd), frontend en Docker. Ver ADR "Backend en el HOST (systemd)" arriba. El código del repo ya
+  está migrado; falta la ejecución en el host (`deploy/README.md`), con el orden que ya se advertía:
+  **endurecer el borde primero** (Tailscale como paso 0, UFW en el 1) y **luego** el host.

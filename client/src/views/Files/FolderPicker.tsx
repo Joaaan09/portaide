@@ -2,6 +2,7 @@
 // Navega el filesystem desde la raíz (GET /api/fs/list, solo carpetas), permite
 // entrar/salir y "Open this folder" fija el workspace (WorkspaceProvider).
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { listDir, type FsEntry, ApiError } from '../../api/client'
 import styles from './FilesView.module.css'
 
@@ -71,7 +72,11 @@ export default function FolderPicker({ root, initialPath, onClose, onOpen }: Fol
 
   const parent = parentOf(current, root)
 
-  return (
+  // Portal a <body>: el overlay debe escapar del contexto de apilamiento de la
+  // vista (.viewport z-index:10 dentro de .shell) para poder pintarse POR ENCIMA
+  // de la barra inferior de navegación (z-index:50) y el drawer (60). Si no, el
+  // footer con el botón "Open this folder" queda tapado por la barra en móvil.
+  return createPortal(
     <div
       className={styles.pickerOverlay}
       role="dialog"
@@ -144,6 +149,7 @@ export default function FolderPicker({ root, initialPath, onClose, onOpen }: Fol
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

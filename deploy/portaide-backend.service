@@ -1,0 +1,57 @@
+# PortaIDE — backend (Express + WS + pty + puente Claude) como servicio del HOST.
+#
+# Modelo "backend en el host" (decisiones.md 2026-07-31): en vez de correr en un
+# contenedor Docker aislado, el backend corre como TU usuario del VPS. Así la
+# Terminal es tu shell real (con `clauded`, docker, logs) y el deploy se lanza
+# desde la propia app. El frontend sigue en Docker tras NPM.
+#
+# Instalación (EN EL HOST):
+#   sudo cp deploy/portaide-backend.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now portaide-backend
+#   journalctl -u portaide-backend -f          # logs en vivo
+#
+# Ajusta User=, WorkingDirectory= y ExecStart= si tu ruta o tu Node difieren
+# (p.ej. si usas nvm, pon la ruta absoluta de node de `which node`).
+
+[Unit]
+Description=PortaIDE backend (corre en el host: FS, pty y puente Claude)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=kuoyii
+Group=kuoyii
+WorkingDirectory=/home/kuoyii/servers/portaide/server
+
+# Secretos y config: el MISMO .env que usaba el compose (raíz del repo).
+# systemd inyecta estas vars en el entorno del proceso; dotenv no las pisa.
+EnvironmentFile=/home/kuoyii/servers/portaide/.env
+
+# Overrides del modelo host (ganan sobre el .env porque van después):
+Environment=NODE_ENV=production
+Environment=PORT=4100
+Environment=HOST=0.0.0.0
+# SQLite ya NO vive en un volumen Docker: fichero en el repo (data/ está gitignored).
+Environment=SQLITE_PATH=/home/kuoyii/servers/portaide/data/portaide.db
+# FS_ROOT: por defecto /home/kuoyii/servers. Amplíalo (p.ej. /home/kuoyii) si
+# quieres navegar más del host desde Files/Editor. La Terminal ya ve todo el VPS.
+# Environment=FS_ROOT=/home/kuoyii
+
+# `env node` resuelve node por PATH. Si usas nvm y no está en el PATH de systemd,
+# sustituye por la ruta absoluta (which node), p.ej. /usr/bin/node.
+ExecStart=/usr/bin/env node dist/index.js
+
+Restart=always
+RestartSec=2
+# Cierre limpio: el server ya escucha SIGTERM (aborta turnos, mata ptys).
+KillSignal=SIGTERM
+TimeoutStopSec=15
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=portaide-backend
+
+[Install]
+WantedBy=multi-user.target

@@ -108,8 +108,16 @@ export type ApprovableBlock = EditToolBlock | BashToolBlock | GenericToolBlock
 /** Burbuja del usuario (derecha, fondo --accent) */
 export interface UserChatItem {
   kind: 'user'
+  /** id del evento `user` del log del server = `localId` del envío (dedupe). */
   id: string
   text: string
+  /**
+   * Estado de ENTREGA (solo local; el hilo del server no lo tiene):
+   * 'sending' = enviado, aún sin confirmar por el server · 'failed' = no
+   * entregado tras los reintentos (la UI ofrece reintentar). Sin valor = está
+   * en el log autoritativo del server.
+   */
+  delivery?: 'sending' | 'failed'
 }
 
 /** Mensaje del asistente (cabecerita "Claude Code" + bloques) */

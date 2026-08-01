@@ -1,5 +1,16 @@
 services:
-  # Frontend — PWA de Vite servida por Nginx (SPA + proxy de /api y /ws al backend)
+  # Frontend — PWA de Vite servida por Nginx (SPA + proxy de /api y /ws).
+  #
+  # El BACKEND ya NO está aquí: corre en el HOST como servicio systemd
+  # (deploy/portaide-backend.service). Motivo (decisiones.md 2026-07-31): así la
+  # Terminal es la shell REAL del VPS (tu `clauded`, docker, logs) y el deploy se
+  # puede lanzar desde la propia app. Coste: se pierde el aislamiento del backend
+  # y el borde protege el VPS entero → endurecer primero (Tailscale, ver deploy/README.md).
+  #
+  # El nginx de este contenedor hace de proxy de /api y /ws hacia el backend del
+  # host vía `host.docker.internal`, que `extra_hosts: host-gateway` resuelve a la
+  # IP del host. NPM (Nginx Proxy Manager) sigue apuntando a este contenedor: su
+  # config NO cambia.
   frontend:
     build:
       context: ./client
@@ -8,56 +19,12 @@ services:
     restart: unless-stopped
     expose:
       - "80"
-    depends_on:
-      backend:
-        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - reverse_proxy_network
-      - internal
-
-  # Backend — Node/Express + ws (API bajo /api, WebSocket bajo /ws)
-  backend:
-    build:
-      context: ./server
-      dockerfile: Dockerfile
-    container_name: portaide-backend
-    restart: unless-stopped
-    expose:
-      - "4100"
-    environment:
-      - NODE_ENV=production
-      - PORT=4100
-      # Persistencia: SQLite embebido en un volumen nombrado (ver volumes abajo).
-      - SQLITE_PATH=/app/data/portaide.db
-      # Borde de seguridad (CLAUDE.md §11): firma de sesión + credencial del usuario único.
-      - SESSION_SECRET=${SESSION_SECRET}
-      - AUTH_EMAIL=${AUTH_EMAIL}
-      - AUTH_PASSWORD=${AUTH_PASSWORD}
-      # Raíz del filesystem que ve la app (workspace por defecto). Ampliable, pero
-      # solo se puede navegar lo que esté montado abajo.
-      - FS_ROOT=/home/kuoyii/servers
-    # Montajes del host que necesita PortaIDE — se validan en Fase 3 al desplegar:
-    # el backend toca el FS real de los proyectos y usa la config/credenciales de
-    # Claude Code del host (mismo path dentro y fuera para que las rutas coincidan).
-    volumes:
-      - /home/kuoyii/servers:/home/kuoyii/servers
-      - /home/kuoyii/.claude:/home/kuoyii/.claude
-      # Persistencia SQLite (meta de las pestañas de chat).
-      - portaide_data:/app/data
-      # Descomentar SOLO si se quiere operar Docker desde la vista Terminal
-      # (requiere docker CLI en la imagen; precedente: Portainer ya corre así).
-      # - /var/run/docker.sock:/var/run/docker.sock
-    networks:
-      - internal
 
 networks:
   # Red compartida con Nginx Proxy Manager (ya existe en el servidor)
   reverse_proxy_network:
     external: true
-  # Red privada interna del proyecto (frontend <-> backend)
-  internal:
-    driver: bridge
-
-volumes:
-  # Persistencia SQLite del backend (montado en /app/data).
-  portaide_data:

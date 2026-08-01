@@ -14,15 +14,31 @@ interface HistoryEntry {
   title: string
   updatedAt: string
   open: boolean
+  /** sessionId del engine asociado (si lo tiene): dedup contra el historial del servidor. */
+  claudeSessionId?: string | null
+}
+
+/** Fila del historial del ENGINE (transcript .jsonl de ~/.claude/projects, incl. VS Code). */
+interface EngineEntry {
+  id: string
+  title: string
+  updatedAt: string
+  gitBranch: string | null
+  messageCount: number
 }
 
 interface ChatHistoryProps {
   open: boolean
+  /** cwd del workspace activo: el historial del engine es POR PROYECTO. null = sin proyecto. */
+  cwd: string | null
   onClose: () => void
   onOpen: (meta: { id: string; title: string }) => void
+  /** Abre una conversación del engine (servidor) por su sessionId. */
+  onOpenEngine: (id: string) => void
   onDelete: (id: string) => void
   onRename: (id: string, title: string) => void
   fetchHistory: () => Promise<HistoryEntry[]>
+  fetchEngineHistory: (cwd: string | null) => Promise<EngineEntry[]>
 }
 
 // Formateador de fecha relativa en español ("hace 2 h", "ayer", "hace 3 d").
@@ -48,16 +64,29 @@ function relativeTime(iso: string): string {
   return rtf.format(Math.round(day / 365), 'year')
 }
 
+/** Subtítulo técnico de una fila del engine: `rama · N msg` (mono, DESIGN §5). */
+function engineSubtitle(e: EngineEntry): string {
+  const parts: string[] = []
+  if (e.gitBranch) parts.push(e.gitBranch)
+  parts.push(`${e.messageCount} msg`)
+  return parts.join(' · ')
+}
+
 export default function ChatHistory({
   open,
+  cwd,
   onClose,
   onOpen,
+  onOpenEngine,
   onDelete,
   onRename,
   fetchHistory,
+  fetchEngineHistory,
 }: ChatHistoryProps) {
   // null = cargando; array = lista resuelta (posiblemente vacía).
   const [entries, setEntries] = useState<HistoryEntry[] | null>(null)
+  // Historial del engine (servidor): null = cargando; array = resuelto.
+  const [engine, setEngine] = useState<EngineEntry[] | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const [confirmId, setConfirmId] = useState<string | null>(null)
@@ -68,12 +97,16 @@ export default function ChatHistory({
     fetchHistory()
       .then(setEntries)
       .catch(() => setEntries([]))
-  }, [fetchHistory])
+    fetchEngineHistory(cwd)
+      .then(setEngine)
+      .catch(() => setEngine([]))
+  }, [fetchHistory, fetchEngineHistory, cwd])
 
-  // Al abrir: reinicia estados efímeros y (re)carga la lista.
+  // Al abrir: reinicia estados efímeros y (re)carga ambas listas.
   useEffect(() => {
     if (!open) return
     setEntries(null)
+    setEngine(null)
     setEditingId(null)
     setConfirmId(null)
     reload()
@@ -108,6 +141,20 @@ export default function ChatHistory({
     onOpen({ id: entry.id, title: entry.title })
     onClose()
   }
+
+  const handleOpenEngine = (id: string) => {
+    onOpenEngine(id)
+    onClose()
+  }
+
+  // Dedup: oculta del historial del servidor las conversaciones que YA figuran como
+  // sesiones de PortaIDE (por id o por su claudeSessionId), para no listarlas dos veces.
+  const taken = new Set<string>()
+  for (const e of entries ?? []) {
+    taken.add(e.id)
+    if (e.claudeSessionId) taken.add(e.claudeSessionId)
+  }
+  const engineEntries = (engine ?? []).filter((e) => !taken.has(e.id))
 
   const startEdit = (event: MouseEvent, entry: HistoryEntry) => {
     event.stopPropagation()
@@ -190,13 +237,16 @@ export default function ChatHistory({
           </button>
         </header>
 
-        {entries === null ? (
-          <p className={styles.hint}>cargando…</p>
-        ) : entries.length === 0 ? (
-          <p className={styles.empty}>Sin conversaciones todavía</p>
-        ) : (
-          <ul className={styles.list}>
-            {entries.map((entry) => {
+        <div className={styles.body}>
+          <section className={styles.section}>
+            <h3 className={styles.sectionLabel}>PortaIDE</h3>
+            {entries === null ? (
+              <p className={styles.hint}>cargando…</p>
+            ) : entries.length === 0 ? (
+              <p className={styles.sectionHint}>Sin conversaciones todavía</p>
+            ) : (
+              <ul className={styles.list}>
+                {entries.map((entry) => {
               const isEditing = editingId === entry.id
               const isConfirming = confirmId === entry.id
               return (
@@ -304,8 +354,44 @@ export default function ChatHistory({
                 </li>
               )
             })}
-          </ul>
-        )}
+              </ul>
+            )}
+          </section>
+
+          <section className={styles.section}>
+            <h3 className={styles.sectionLabel}>En el servidor · Claude Code</h3>
+            {cwd === null ? (
+              <p className={styles.sectionHint}>
+                Abre un proyecto para ver sus conversaciones del servidor.
+              </p>
+            ) : engine === null ? (
+              <p className={styles.hint}>cargando…</p>
+            ) : engineEntries.length === 0 ? (
+              <p className={styles.sectionHint}>
+                No hay conversaciones del servidor en este proyecto.
+              </p>
+            ) : (
+              <ul className={styles.list}>
+                {engineEntries.map((entry) => (
+                  <li key={entry.id} className={styles.row}>
+                    <button
+                      type="button"
+                      className={styles.rowMain}
+                      onClick={() => handleOpenEngine(entry.id)}
+                    >
+                      <span className={styles.dotSpacer} aria-hidden="true" />
+                      <span className={styles.engineText}>
+                        <span className={styles.engineTitle}>{entry.title}</span>
+                        <span className={styles.rowSub}>{engineSubtitle(entry)}</span>
+                      </span>
+                      <span className={styles.meta}>{relativeTime(entry.updatedAt)}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
       </div>
     </div>
   )

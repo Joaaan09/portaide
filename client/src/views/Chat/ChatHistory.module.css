@@ -121,21 +121,51 @@
   color: var(--faint);
 }
 
-/* ---------- Lista ---------- */
+/* ---------- Secciones (PortaIDE / servidor) ---------- */
 
-.list {
+/* Contenedor con scroll: envuelve ambas secciones (antes scrolleaba .list) */
+.body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  margin: 0;
-  padding: 6px;
-  list-style: none;
   scrollbar-width: none;
   padding-bottom: max(6px, env(safe-area-inset-bottom, 0px));
 }
 
-.list::-webkit-scrollbar {
+.body::-webkit-scrollbar {
   display: none;
+}
+
+.section {
+  padding-bottom: 4px;
+}
+
+/* Etiqueta de sección: mono, uppercase, tracking (coherente con .title) */
+.sectionLabel {
+  margin: 0;
+  padding: 12px 12px 4px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+/* Texto auxiliar dentro de una sección (vacía / sin proyecto) */
+.sectionHint {
+  margin: 0;
+  padding: 6px 14px 12px;
+  font-size: 12.5px;
+  color: var(--faint);
+}
+
+/* ---------- Lista ---------- */
+
+.list {
+  margin: 0;
+  padding: 4px 6px;
+  list-style: none;
 }
 
 .row {
@@ -198,6 +228,34 @@
   font-size: 10px;
   color: var(--faint);
   white-space: nowrap;
+}
+
+/* ---------- Fila del engine (servidor): título + subtítulo técnico ---------- */
+
+.engineText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.engineTitle {
+  font-size: 13.5px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Subtítulo `rama · N msg`: mono, --faint */
+.rowSub {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ---------- Acciones por fila (✎ / 🗑) ---------- */

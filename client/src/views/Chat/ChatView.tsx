@@ -6,6 +6,7 @@ import { useState } from 'react'
 import { useChatSession } from './useChatSession'
 import { useWorkspace } from '../../workspace/WorkspaceProvider'
 import ChatTabs from './ChatTabs'
+import ConnBanner from '../../components/ConnBanner/ConnBanner'
 import ChatThread from './ChatThread'
 import ChatComposer from './ChatComposer'
 import ChatHistory from './ChatHistory'
@@ -29,7 +30,18 @@ export default function ChatView() {
         onClose={chat.closeSession}
         onOpenHistory={() => setHistoryOpen(true)}
       />
-      <ChatThread session={chat.activeSession} onDecide={chat.decide} />
+      {/* Tira de conexión (DESIGN.md §6.3): con el socket abierto y la lista
+          cargada no ocupa nada; solo se pinta lo anormal. */}
+      <ConnBanner
+        status={chat.connStatus}
+        errorText={chat.sessionsError ? 'No se pudieron cargar las conversaciones' : undefined}
+        onRetry={chat.retryConnection}
+      />
+      <ChatThread
+        session={chat.activeSession}
+        onDecide={chat.decide}
+        onRetryMessage={chat.retryMessage}
+      />
       <ChatComposer
         onSend={(text) => chat.sendMessage(text, workspace)}
         model={chat.model}
@@ -46,11 +58,14 @@ export default function ChatView() {
       />
       <ChatHistory
         open={historyOpen}
+        cwd={workspace}
         onClose={() => setHistoryOpen(false)}
         onOpen={(meta) => chat.reopenSession({ id: meta.id, title: meta.title })}
+        onOpenEngine={(id) => chat.openEngineSession({ id, cwd: workspace })}
         onDelete={chat.deleteSession}
         onRename={chat.renameSession}
         fetchHistory={chat.fetchHistory}
+        fetchEngineHistory={chat.fetchEngineHistory}
       />
     </main>
   )

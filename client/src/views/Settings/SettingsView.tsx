@@ -9,6 +9,7 @@ import SettingsRow from './SettingsRow'
 import ThemePicker from './ThemePicker'
 import NavPicker from './NavPicker'
 import FontSizeStepper from './FontSizeStepper'
+import NotificationsPanel from './NotificationsPanel'
 import SystemPanel from './SystemPanel'
 import styles from './SettingsView.module.css'
 
@@ -52,6 +53,11 @@ export default function SettingsView() {
           <SettingsRow label="Navigation" layout="stacked">
             <NavPicker />
           </SettingsRow>
+        </SettingsGroup>
+
+        {/* --- Notificaciones (Web Push del chat, DESIGN.md §10.1) --- */}
+        <SettingsGroup label="Notificaciones">
+          <NotificationsPanel />
         </SettingsGroup>
 
         {/* --- System (estado real del backend) --- */}

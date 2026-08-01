@@ -11,6 +11,20 @@
 // ENSAMBLA el log de eventos (`LogEvent[]`) en los bloques de UI y gestiona la
 // META de las pestañas por REST (título, open, borrado). Singleton A PROPÓSITO:
 // AppShell remonta ChatView con key={view}; el estado y el socket sobreviven.
+//
+// Resiliencia móvil (el socket se queda ZOMBI en OPEN al volver del background):
+//   - `lastFrameAt` + listeners de foreground/online → reconexión forzada.
+//   - backoff con jitter, cola de salida y ping de aplicación (watchdog).
+//   - envíos con `localId`: la burbuja local vive hasta que su evento `user`
+//     aparece en el LOG del server (mismo id → relevo sin parpadeo). El
+//     `ack{localId}` confirma la RECEPCIÓN (deja de reenviarse y de caducar)
+//     pero NO retira la burbuja: el server registra el evento `user` al ARRANCAR
+//     el turno, que antes puede esperar slot de concurrencia. Lo que salió por
+//     una conexión anterior y sigue SIN `ack` se reenvía tras el snapshot;
+//     agotados los intentos se marca NO ENTREGADO en la UI, con reintento
+//     manual. Nunca se finge que un mensaje llegó.
+//   - ids de item deterministas (`a-<índice del evento>`) para que reaplicar un
+//     snapshot no remonte el hilo ni mueva el scroll.
 import type {
   AssistantBlock,
   AssistantChatItem,
@@ -62,6 +76,48 @@ export interface StoreSnapshot {
   effort: ChatEffortSetting
   connStatus: ConnStatus
   loading: boolean
+  /** true si la lista de conversaciones (REST) falló; se reintenta sola (backoff). */
+  sessionsError: boolean
+}
+
+// --- Timings de conexión (móvil: background, cambio de red, socket zombi) ---
+
+/** Reconexión: backoff exponencial con jitter, desde 500ms hasta 15s. */
+const RECONNECT_BASE_MS = 500
+const RECONNECT_MAX_MS = 15_000
+/** Silencio del socket que lo hace sospechoso al volver a primer plano. */
+const STALE_MS = 20_000
+/** Un CONNECTING colgado más de esto se descarta y se abre un socket nuevo. */
+const CONNECTING_TIMEOUT_MS = 10_000
+/** Cadencia del watchdog (ping + detección de socket mudo con turno vivo). */
+const WATCHDOG_MS = 15_000
+/** Ping de aplicación (el server ignora los tipos que no conoce). */
+const HEARTBEAT_MS = 30_000
+/** Silencio CON turno vivo que dispara el probe (el turno debería emitir). */
+const STREAM_STALE_MS = 45_000
+/** Espera de respuesta del probe antes de dar el socket por muerto. */
+const PROBE_MS = 6_000
+/** Reintento de la lista de conversaciones (REST) con backoff. */
+const SESSIONS_RETRY_BASE_MS = 1_000
+const SESSIONS_RETRY_MAX_MS = 15_000
+/** Tope de la cola de salida (si la red no vuelve, no crecer sin fin). */
+const QUEUE_MAX = 100
+/** Reenvíos de un mismo mensaje antes de darlo por no entregado. */
+const PENDING_MAX_ATTEMPTS = 3
+/** Antigüedad máxima de un envío sin `ack` (con conexión) antes de darlo por
+ *  no entregado. El `ack` del server es inmediato, así que no hace falta más. */
+const PENDING_TTL_MS = 2 * 60_000
+/** Espera del `ack` de un `message`: sin él, el socket miente (zombi). */
+const ACK_TIMEOUT_MS = 4_000
+
+/** Tramas que NO se encolan: se regeneran solas al reconectar o caducan. */
+const NON_QUEUEABLE = new Set(['attach', 'detach', 'ping'])
+
+/** Backoff exponencial con jitter (±25%) acotado a `max`. */
+function backoffDelay(attempt: number, base: number, max: number): number {
+  const exp = Math.min(base * 2 ** attempt, max)
+  const jitter = exp * 0.25 * (Math.random() * 2 - 1)
+  return Math.max(base, Math.round(exp + jitter))
 }
 
 // --- Preferencias persistidas (localStorage) -------------------------------
@@ -244,10 +300,17 @@ interface Assembler {
   /** id del mensaje del asistente "abierto" (recibe los bloques del turno en curso). */
   openId: string | null
   thinkingOpen: boolean
+  /**
+   * Índice del evento del log que se está aplicando. Los ids de los mensajes del
+   * asistente se derivan de él (`a-<seq>`): reaplicar el MISMO snapshot produce
+   * las MISMAS identidades → React no remonta el hilo al reconectar (y el
+   * auto-scroll de ChatThread no salta). Antes se usaba `uid('a')` (aleatorio).
+   */
+  seq: number
 }
 
-function openAssistant(acc: Assembler): void {
-  const id = uid('a')
+function openAssistant(acc: Assembler, suffix = ''): void {
+  const id = `a-${acc.seq}${suffix}`
   acc.items.push({ kind: 'assistant', id, blocks: [], streaming: true })
   acc.openId = id
   acc.thinkingOpen = false
@@ -385,6 +448,34 @@ function reduceEvent(acc: Assembler, ev: LogEvent): void {
 
 type TurnStatus = 'idle' | 'queued' | 'running' | 'error'
 
+/** Envío del usuario aún no confirmado por el server (dedupe: localId). */
+interface PendingSend {
+  localId: string
+  sessionId: string
+  text: string
+  /** Trama `message` tal cual, lista para reenviar sin recomponerla. */
+  frame: Record<string, unknown>
+  firstSentAt: number
+  sentAt: number
+  /**
+   * Nº de conexión por la que salió la última vez. Solo se reenvía lo enviado
+   * por una conexión ANTERIOR: si salió por la actual, o llega su `ack`, o el
+   * socket muere y habrá otra conexión. Sin esto habría una carrera (snapshot
+   * en vuelo mientras el `message` va de camino) que duplicaría el turno.
+   */
+  sentOnConn: number
+  attempts: number
+  /**
+   * true = el server confirmó la RECEPCIÓN (`ack`). No implica que su burbuja
+   * esté ya en el log (se registra al arrancar el turno, que puede esperar slot
+   * de concurrencia): el pendiente sigue pintando la burbuja, pero ya no se
+   * reenvía ni caduca.
+   */
+  acked: boolean
+  /** true = agotados los reintentos; la UI lo marca como no entregado. */
+  failed: boolean
+}
+
 class ChatStore {
   private state: StoreSnapshot = {
     sessions: [],
@@ -394,16 +485,41 @@ class ChatStore {
     effort: initialEffort(),
     connStatus: 'closed',
     loading: true,
+    sessionsError: false,
   }
 
   private listeners = new Set<() => void>()
   private ws: WebSocket | null = null
-  private queue: string[] = []
+  /** Cola de salida (objetos, no strings: se filtra por `type` al purgar). */
+  private queue: Record<string, unknown>[] = []
   private started = false
   private reconnectTimer: number | null = null
+  private reconnectAttempt = 0
+  /** Nº de la conexión actual (identifica por qué socket salió cada envío). */
+  private connId = 0
+  /** Instante de la última trama RECIBIDA (detector de socket zombi). */
+  private lastFrameAt = 0
+  /** Instante en que se abrió el socket actual (para el CONNECTING colgado). */
+  private connectStartedAt = 0
+  private lastPingAt = 0
+  private watchdogTimer: number | null = null
+  private probeTimer: number | null = null
+  private lifecycleBound = false
+  /** Estado del fetch de la lista de conversaciones (evita solapar reintentos). */
+  private sessionsLoading = false
+  private sessionsAttempt = 0
+  private sessionsRetryTimer: number | null = null
 
   /** Cursor de ensamblado por sesión (openId + thinkingOpen del hilo). */
   private cursors = new Map<string, { openId: string | null; thinkingOpen: boolean }>()
+  /** Hilo del SERVER por sesión (sin burbujas locales): base de `applyLive`. */
+  private threads = new Map<string, ChatItem[]>()
+  /** Nº de eventos del log ya aplicados por sesión (ids deterministas en vivo). */
+  private eventCounts = new Map<string, number>()
+  /** Envíos sin confirmar, por `localId` (orden de inserción = orden de envío). */
+  private pending = new Map<string, PendingSend>()
+  /** Sesiones cuyo próximo snapshot decide si hay que reenviar pendientes. */
+  private resendAfterSnapshot = new Set<string>()
   /** Sesiones a las que este socket ya mandó `attach` (se limpia al reconectar). */
   private attached = new Set<string>()
   /** requestId de aprobación → sessionId (para enrutar el decide en multi-sesión). */
@@ -441,11 +557,22 @@ class ChatStore {
   private init(): void {
     if (this.started) return
     this.started = true
+    this.bindLifecycle()
+    this.startWatchdog()
     this.connect()
     this.loadSessions()
   }
 
+  /**
+   * Carga la tira de pestañas (scope=open). Si falla, NO fabrica una sesión
+   * fantasma (el usuario creería que perdió su conversación): marca
+   * `sessionsError` y reintenta con backoff (también al reconectar el WS).
+   * La sesión vacía solo nace si el server responde OK con lista vacía.
+   */
   private loadSessions(): void {
+    if (this.sessionsLoading) return
+    this.sessionsLoading = true
+    this.clearSessionsRetry()
     // scope=open → pestañas abiertas (la tira). El HILO no viene aquí: llega por el
     // `snapshot` de cada `attach` (el server es autoritativo del hilo).
     fetch('/api/chat/sessions?scope=open', { credentials: 'include' })
@@ -459,21 +586,156 @@ class ChatStore {
           open: true,
           ...(d.claudeSessionId ? { claudeSessionId: d.claudeSessionId } : {}),
         }))
+        // Conserva las pestañas locales que el server aún no conoce (creadas
+        // mientras la lista no había cargado): no se pisan con la respuesta.
+        const known = new Set(sessions.map((s) => s.id))
+        for (const s of this.state.sessions) if (!known.has(s.id)) sessions.push(s)
         if (sessions.length === 0) sessions.push(this.newLocalSession())
+
         const stored = lsGet(LS_ACTIVE)
-        const activeId = stored && sessions.some((s) => s.id === stored) ? stored : sessions[0]!.id
-        this.setState({ sessions, activeId, loading: false })
+        const current = this.state.activeId
+        const activeId = sessions.some((s) => s.id === current)
+          ? current
+          : stored && sessions.some((s) => s.id === stored)
+            ? stored
+            : sessions[0]!.id
+
+        this.sessionsLoading = false
+        this.sessionsAttempt = 0
+        this.setState({ sessions, activeId, loading: false, sessionsError: false })
         this.attachAll()
       })
       .catch(() => {
-        const s = this.newLocalSession()
-        this.setState({ sessions: [s], activeId: s.id, loading: false })
-        this.attachAll()
+        this.sessionsLoading = false
+        this.setState({ loading: false, sessionsError: true })
+        this.scheduleSessionsRetry()
       })
+  }
+
+  private clearSessionsRetry(): void {
+    if (this.sessionsRetryTimer === null) return
+    window.clearTimeout(this.sessionsRetryTimer)
+    this.sessionsRetryTimer = null
+  }
+
+  private scheduleSessionsRetry(): void {
+    if (this.sessionsRetryTimer !== null) return
+    const delay = backoffDelay(this.sessionsAttempt, SESSIONS_RETRY_BASE_MS, SESSIONS_RETRY_MAX_MS)
+    this.sessionsAttempt += 1
+    this.sessionsRetryTimer = window.setTimeout(() => {
+      this.sessionsRetryTimer = null
+      this.loadSessions()
+    }, delay)
   }
 
   private newLocalSession(): ChatSession {
     return { id: newSessionId(), name: 'new chat', items: [], open: true }
+  }
+
+  // ---- Ciclo de vida (background ⇄ primer plano) --------------------------
+
+  /**
+   * En móvil el socket queda **zombi en OPEN** (pantalla bloqueada, cambio
+   * WiFi↔datos): `onclose` puede tardar minutos, así que sin esto el hilo
+   * simplemente deja de crecer y el chat parece parado. Al volver a primer
+   * plano NO nos fiamos de `readyState`: lo contrastamos con `lastFrameAt` (la
+   * última trama recibida). Los listeners no se retiran (el store es un
+   * singleton que vive lo que la app).
+   */
+  private bindLifecycle(): void {
+    if (this.lifecycleBound || typeof window === 'undefined') return
+    this.lifecycleBound = true
+    const wake = (): void => this.handleForeground()
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) wake()
+    })
+    window.addEventListener('pageshow', wake)
+    window.addEventListener('focus', wake)
+    window.addEventListener('online', wake)
+
+    // Deep-link desde una notificación push: el Service Worker enfoca la app y
+    // PushNavigation emite este evento con la sesión avisada. Si la app ya
+    // estaba abierta hay que SELECCIONAR esa pestaña; sin esto aterrizarías en
+    // el Chat pero en la conversación equivocada.
+    window.addEventListener('portaide:open-chat-session', (ev) => {
+      const id = (ev as CustomEvent<{ sessionId?: string }>).detail?.sessionId
+      if (typeof id === 'string' && id) this.selectSession(id)
+    })
+  }
+
+  private handleForeground(): void {
+    if (typeof document !== 'undefined' && document.hidden) return
+    const ws = this.ws
+    const silent = Date.now() - this.lastFrameAt
+
+    if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+      this.reconnectNow() // sin esperar al backoff: el usuario está mirando
+    } else if (ws.readyState === WebSocket.CONNECTING) {
+      if (Date.now() - this.connectStartedAt > CONNECTING_TIMEOUT_MS) this.forceReconnect()
+    } else if (silent > STALE_MS) {
+      // OPEN pero mudo demasiado tiempo → sospechoso. Reconectar es barato (el
+      // turno vive en el server y cada `attach` devuelve el snapshot completo).
+      this.forceReconnect()
+    }
+
+    if (this.state.sessionsError) this.loadSessions()
+  }
+
+  /** Watchdog: ping de aplicación + socket mudo mientras hay un turno vivo. */
+  private startWatchdog(): void {
+    if (this.watchdogTimer !== null || typeof window === 'undefined') return
+    this.watchdogTimer = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return
+      this.sweepPending()
+      if (this.ws?.readyState !== WebSocket.OPEN) return
+      const now = Date.now()
+      if (now - this.lastPingAt >= HEARTBEAT_MS) {
+        this.lastPingAt = now
+        // Ping de APLICACIÓN: el server ignora los tipos que no conoce, así que
+        // es inofensivo. No espera respuesta; sirve para que un socket con el
+        // TCP roto acabe fallando el `send` y dispare `onclose` cuanto antes.
+        this.sendNow({ type: 'ping' })
+      }
+      // Con turno vivo el server emite constantemente: un silencio largo es
+      // señal fuerte de socket muerto → probe (no cortamos a ciegas).
+      const busy = this.state.sessions.some((s) => s.streaming)
+      if (busy && now - this.lastFrameAt > STREAM_STALE_MS) this.probe()
+    }, WATCHDOG_MS)
+  }
+
+  /**
+   * Tras enviar algo que el server SIEMPRE contesta (un `message` responde con
+   * status/eventos), comprueba que hubo respuesta. Cubre el peor caso: socket
+   * zombi en OPEN → `send()` se pierde en silencio y el composer se quedaría
+   * bloqueado en "streaming" para siempre. Al reconectar, el snapshot del server
+   * (autoritativo) corrige el estado y el usuario ve la verdad.
+   */
+  private armSendWatchdog(): void {
+    const mark = this.lastFrameAt
+    window.setTimeout(() => {
+      if (this.lastFrameAt === mark && this.ws?.readyState === WebSocket.OPEN) this.probe()
+    }, PROBE_MS)
+  }
+
+  /**
+   * Comprueba de verdad si el socket responde: un `attach` siempre contesta con
+   * `snapshot`. Si no llega NADA en PROBE_MS, el socket está muerto aunque
+   * `readyState` diga OPEN.
+   */
+  private probe(): void {
+    if (this.probeTimer !== null) return
+    if (this.ws?.readyState !== WebSocket.OPEN) {
+      this.forceReconnect()
+      return
+    }
+    const id = this.state.activeId
+    if (!id) return
+    this.sendNow({ type: 'attach', sessionId: id })
+    const mark = this.lastFrameAt
+    this.probeTimer = window.setTimeout(() => {
+      this.probeTimer = null
+      if (this.lastFrameAt === mark) this.forceReconnect()
+    }, PROBE_MS)
   }
 
   // ---- WebSocket ---------------------------------------------------------
@@ -483,19 +745,49 @@ class ChatStore {
       return
     }
     this.setState({ connStatus: 'connecting' })
+    this.connectStartedAt = Date.now()
+    this.lastFrameAt = Date.now() // sin esto el 1er foreground lo daría por zombi
+    this.connId += 1
     const ws = new WebSocket(chatWsUrl())
     this.ws = ws
 
     ws.onopen = () => {
+      if (this.ws !== ws) return // socket ya descartado (forceReconnect)
+      this.reconnectAttempt = 0
+      this.lastFrameAt = Date.now()
+      this.lastPingAt = Date.now()
       this.setState({ connStatus: 'open' })
-      const pending = this.queue
-      this.queue = []
-      for (const m of pending) ws.send(m)
-      // (Re)suscribe a todas las pestañas abiertas → snapshot autoritativo de cada una.
+      // Reenvío at-least-once: NO se reenvía a ciegas aquí. Se marcan las
+      // sesiones con envíos sin confirmar y se decide al recibir su snapshot
+      // (que dice qué llegó al log y cuántos hay en cola) → cero duplicados.
+      for (const p of this.pending.values()) this.resendAfterSnapshot.add(p.sessionId)
+      // (Re)suscribe a todas las pestañas abiertas → snapshot autoritativo de
+      // cada una. Va ANTES de drenar la cola: los `message` pendientes llegan
+      // con la suscripción ya hecha.
       this.attachAll()
+      // Pendientes de una sesión que ya no está en la tira: no habrá snapshot.
+      for (const id of [...this.resendAfterSnapshot]) {
+        if (!this.getSession(id)) this.resendAfterSnapshot.delete(id)
+      }
+      const queued = this.queue
+      this.queue = []
+      for (const m of queued) {
+        this.sendNow(m)
+        // El envío sale AHORA, por ESTA conexión: se marca para que su snapshot
+        // (que va por delante) no lo reenvíe, y se espera su `ack`.
+        const p = typeof m.localId === 'string' ? this.pending.get(m.localId) : undefined
+        if (p) {
+          p.sentAt = Date.now()
+          p.sentOnConn = this.connId
+          this.armAckWatchdog(p.localId)
+        }
+      }
+      // La lista pudo fallar mientras no había red: se reintenta al volver.
+      if (this.state.sessionsError) this.loadSessions()
     }
 
     ws.onmessage = (e) => {
+      this.lastFrameAt = Date.now()
       try {
         this.handleFrame(JSON.parse(String(e.data)) as Record<string, unknown>)
       } catch {
@@ -504,10 +796,13 @@ class ChatStore {
     }
 
     ws.onclose = () => {
+      if (this.ws !== ws) return // ya reemplazado: no pisar el socket nuevo
       this.ws = null
       this.setState({ connStatus: 'closed' })
-      // Las suscripciones del server se pierden con el socket: re-attach al reconectar.
+      // Las suscripciones del server se pierden con el socket: re-attach al
+      // reconectar (attachAll), así que las de la cola sobran → purga.
       this.attached.clear()
+      this.purgeQueue()
       this.scheduleReconnect()
     }
 
@@ -520,34 +815,102 @@ class ChatStore {
     }
   }
 
+  /** Reconexión con backoff exponencial + jitter (500ms → 15s). */
   private scheduleReconnect(): void {
     if (this.reconnectTimer !== null) return
+    const delay = backoffDelay(this.reconnectAttempt, RECONNECT_BASE_MS, RECONNECT_MAX_MS)
+    this.reconnectAttempt += 1
     this.reconnectTimer = window.setTimeout(() => {
       this.reconnectTimer = null
       this.connect()
-    }, 1500)
+    }, delay)
   }
 
-  private raw(obj: unknown): void {
-    const msg = JSON.stringify(obj)
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(msg)
-    } else {
-      this.queue.push(msg)
-      this.connect()
+  /** Reconecta YA (resetea el backoff): foreground o acción del usuario. */
+  private reconnectNow(): void {
+    if (this.reconnectTimer !== null) {
+      window.clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = null
+    }
+    this.reconnectAttempt = 0
+    this.connect()
+  }
+
+  /** Descarta el socket actual (aunque diga OPEN) y abre uno nuevo de inmediato. */
+  private forceReconnect(): void {
+    const old = this.ws
+    this.ws = null
+    this.attached.clear()
+    if (this.probeTimer !== null) {
+      window.clearTimeout(this.probeTimer)
+      this.probeTimer = null
+    }
+    if (old) {
+      // Handlers fuera: el `onclose` tardío del zombi no debe pisar al nuevo.
+      old.onopen = null
+      old.onmessage = null
+      old.onclose = null
+      old.onerror = null
+      try {
+        old.close()
+      } catch {
+        /* noop */
+      }
+    }
+    this.purgeQueue()
+    this.setState({ connStatus: 'connecting' })
+    this.reconnectNow()
+  }
+
+  /** Quita de la cola lo que se regenera solo al reconectar (attach/detach/ping). */
+  private purgeQueue(): void {
+    this.queue = this.queue.filter((m) => !NON_QUEUEABLE.has(String(m.type)))
+  }
+
+  /** Envía sin encolar (el llamante ya sabe que el socket está OPEN). */
+  private sendNow(obj: Record<string, unknown>): void {
+    try {
+      this.ws?.send(JSON.stringify(obj))
+    } catch {
+      /* socket muerto: `onclose`/watchdog se encargan de reconectar */
     }
   }
 
-  /** Suscribe (attach) a una sesión si el socket está abierto y no lo estaba ya. */
+  /**
+   * Envía o ENCOLA. Nada de `send()` a ciegas: sobre un socket zombi el mensaje
+   * se pierde en silencio. Las tramas que se regeneran al reconectar no entran
+   * en la cola (evita el `attach` duplicado).
+   */
+  private raw(obj: Record<string, unknown>): void {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.sendNow(obj)
+      return
+    }
+    if (!NON_QUEUEABLE.has(String(obj.type))) {
+      this.queue.push(obj)
+      if (this.queue.length > QUEUE_MAX) this.queue.splice(0, this.queue.length - QUEUE_MAX)
+    }
+    this.connect()
+  }
+
+  /**
+   * Suscribe (attach) a una sesión. `attached` solo registra lo REALMENTE
+   * enviado por ESTE socket: si no está abierto, el attach lo hará `attachAll()`
+   * en el `onopen` (no se encola: se duplicaría).
+   */
   private attach(id: string): void {
+    if (this.ws?.readyState !== WebSocket.OPEN) {
+      this.connect()
+      return
+    }
     if (this.attached.has(id)) return
     this.attached.add(id)
-    this.raw({ type: 'attach', sessionId: id })
+    this.sendNow({ type: 'attach', sessionId: id })
   }
 
   private detach(id: string): void {
     if (!this.attached.delete(id)) return
-    this.raw({ type: 'detach', sessionId: id })
+    if (this.ws?.readyState === WebSocket.OPEN) this.sendNow({ type: 'detach', sessionId: id })
   }
 
   /** Attach a todas las pestañas abiertas (idempotente). */
@@ -593,6 +956,27 @@ class ChatStore {
           queued: typeof frame.queueLength === 'number' ? frame.queueLength : s.queued,
         }))
         return
+      case 'ack': {
+        // Confirmación AUTORITATIVA de RECEPCIÓN (el server ya lo aceptó). NO
+        // retira la burbuja local: el evento `user` del log se registra al
+        // ARRANCAR el turno, y con los slots de concurrencia ocupados eso puede
+        // tardar minutos. Borrarla aquí hacía DESAPARECER de la pantalla el
+        // mensaje recién enviado (hilo vacío + composer bloqueado). El pendiente
+        // se marca `acked`: deja de reenviarse y de caducar, y su burbuja se
+        // mantiene hasta que llegue su evento `user` (mismo id → relevo limpio).
+        const localId = typeof frame.localId === 'string' ? frame.localId : ''
+        const p = localId ? this.pending.get(localId) : undefined
+        if (p && !p.acked) {
+          p.acked = true
+          // Si se había dado por no entregado (reintento manual), el ack lo
+          // desmiente: vuelve a "enviando".
+          if (p.failed) {
+            p.failed = false
+            this.refreshPending(p.sessionId)
+          }
+        }
+        return
+      }
       default:
         return
     }
@@ -607,46 +991,231 @@ class ChatStore {
     queueLength: number
   ): void {
     if (!this.getSession(sessionId)) return // snapshot de una sesión ya cerrada
-    const acc: Assembler = { items: [], openId: null, thinkingOpen: false }
-    for (const ev of events) {
-      if (ev && ev.type) reduceEvent(acc, ev)
+    const acc: Assembler = { items: [], openId: null, thinkingOpen: false, seq: 0 }
+    events.forEach((ev, i) => {
+      if (!ev || !ev.type) return
+      acc.seq = i // id determinista del assistant que abra este evento
+      reduceEvent(acc, ev)
       // Registra aprobaciones pendientes del snapshot para enrutar el decide.
-      if (ev?.type === 'permission_request') this.pendingPerm.set(ev.requestId, sessionId)
-    }
+      if (ev.type === 'permission_request') this.pendingPerm.set(ev.requestId, sessionId)
+      // El log del server es la confirmación de entrega de nuestros envíos.
+      if (ev.type === 'user') this.pending.delete(ev.id)
+    })
     const running = status === 'running' || status === 'queued'
     // Si el turno NO está vivo, cierra el assistant abierto (no dejar typing fantasma).
     if (!running) closeAssistant(acc)
+    // Y al revés: si el turno SÍ sigue vivo pero el log ya cerró el último
+    // mensaje (p.ej. termina en `result` y hay otro mensaje en cola), abre uno
+    // vacío para que se pinte el typing: el usuario debe VER que sigue trabajando.
+    else if (acc.openId === null) {
+      acc.seq = events.length // fuera del rango del log → id propio, sin colisión
+      openAssistant(acc, '-pending')
+    }
     this.cursors.set(sessionId, { openId: acc.openId, thinkingOpen: acc.thinkingOpen })
-    this.updateSession(sessionId, (s) => ({
-      ...s,
-      items: acc.items,
+    this.eventCounts.set(sessionId, events.length)
+    this.reconcileAcked(sessionId, status, queueLength)
+    this.commitThread(sessionId, acc.items, {
       streaming: running,
       queued: queueLength,
       ...(claudeSessionId ? { claudeSessionId } : {}),
-    }))
+    })
+    // Reenvío at-least-once: el snapshot ya dijo qué llegó y qué no.
+    if (this.resendAfterSnapshot.delete(sessionId)) this.resendPending(sessionId)
   }
 
   /** Aplica un evento en vivo sobre el estado actual de la sesión. */
   private applyLive(sessionId: string, ev: LogEvent): void {
     const session = this.getSession(sessionId)
     if (!session || !ev.type) return
+    // Cuenta TODOS los eventos entregados (también los que no tocan el hilo):
+    // así el índice en vivo sigue la misma numeración que el log del snapshot.
+    const seq = this.eventCounts.get(sessionId) ?? 0
+    this.eventCounts.set(sessionId, seq + 1)
+
     // 'session' solo actualiza el claudeSessionId (para reanudar); no toca el hilo.
     if (ev.type === 'session') {
       this.updateSession(sessionId, (s) => ({ ...s, claudeSessionId: ev.sessionId }))
       return
     }
     if (ev.type === 'permission_request') this.pendingPerm.set(ev.requestId, sessionId)
+    // El server ya tiene la burbuja: deja de ser un envío pendiente (mismo id →
+    // la burbuja local se sustituye por la del log SIN parpadeo ni duplicado).
+    if (ev.type === 'user') this.pending.delete(ev.id)
 
     const cur = this.cursors.get(sessionId) ?? { openId: null, thinkingOpen: false }
-    const acc: Assembler = { items: [...session.items], openId: cur.openId, thinkingOpen: cur.thinkingOpen }
+    const acc: Assembler = {
+      items: [...(this.threads.get(sessionId) ?? [])],
+      openId: cur.openId,
+      thinkingOpen: cur.thinkingOpen,
+      seq,
+    }
     reduceEvent(acc, ev)
     this.cursors.set(sessionId, { openId: acc.openId, thinkingOpen: acc.thinkingOpen })
-    this.updateSession(sessionId, (s) => ({ ...s, items: acc.items }))
+    this.commitThread(sessionId, acc.items)
+  }
+
+  // ---- Envíos pendientes (at-least-once con dedupe por localId) -----------
+
+  /**
+   * Publica el hilo de una sesión = log del server + burbujas locales aún no
+   * confirmadas. El hilo del server se guarda aparte (`threads`) para que
+   * `applyLive` nunca parta de un hilo con burbujas locales mezcladas.
+   */
+  private commitThread(
+    sessionId: string,
+    serverItems: ChatItem[],
+    patch: Partial<ChatSession> = {}
+  ): void {
+    this.threads.set(sessionId, serverItems)
+    const extra = this.pendingItems(sessionId)
+    this.updateSession(sessionId, (s) => ({
+      ...s,
+      ...patch,
+      items: extra.length > 0 ? [...serverItems, ...extra] : serverItems,
+    }))
+  }
+
+  /** Recompone el hilo publicado tras cambiar los pendientes (sin tocar el log). */
+  private refreshPending(sessionId: string): void {
+    this.commitThread(sessionId, this.threads.get(sessionId) ?? [])
+  }
+
+  /**
+   * Envíos con `ack` que el server YA NO tiene. Solo se puede concluir con el
+   * server EN REPOSO (el mensaje no está en el log, ni en la cola, ni hay turno
+   * vivo) y si el `ack` vino de una conexión ANTERIOR: en la conexión actual un
+   * mensaje aceptado puede estar simplemente esperando slot de concurrencia
+   * (status 'queued'), que es correcto y NO es un fallo. Cuando se cumplen las
+   * dos condiciones el mensaje se perdió de verdad (server reiniciado con el
+   * turno sin arrancar): se marca NO ENTREGADO, con reintento manual, en vez de
+   * dejar la burbuja "enviando" para siempre. Nunca se reenvía solo: duplicaría
+   * el turno. (Lo publica el `commitThread` que viene justo después.)
+   */
+  private reconcileAcked(sessionId: string, status: TurnStatus, queueLength: number): void {
+    if (status === 'running' || status === 'queued' || queueLength > 0) return
+    for (const p of this.pending.values()) {
+      if (p.sessionId !== sessionId || !p.acked || p.failed) continue
+      if (p.sentOnConn === this.connId) continue // ack de ESTA conexión: en curso
+      p.failed = true
+    }
+  }
+
+  /** Burbujas de los envíos aún no confirmados por el server (orden de envío). */
+  private pendingItems(sessionId: string): ChatItem[] {
+    const out: ChatItem[] = []
+    for (const p of this.pending.values()) {
+      if (p.sessionId !== sessionId) continue
+      // Con `ack` el mensaje está aceptado pero aún no en el hilo (espera slot o
+      // turno): sigue siendo 'sending' — no ha empezado a responderse.
+      out.push({
+        kind: 'user',
+        id: p.localId,
+        text: p.text,
+        delivery: p.failed ? 'failed' : 'sending',
+      })
+    }
+    return out
+  }
+
+  /** Envía (o encola) un pendiente y arranca la espera de su `ack`. */
+  private dispatchPending(p: PendingSend): void {
+    p.sentAt = Date.now()
+    p.sentOnConn = this.connId
+    this.raw(p.frame)
+    this.armAckWatchdog(p.localId)
+  }
+
+  /**
+   * Un `message` enviado sin `ack` en unos segundos = socket zombi (dice OPEN
+   * pero el `send` se perdió). Se corta y se reconecta: el snapshot del nuevo
+   * socket dirá si llegó y, si no, `resendPending` lo reenvía.
+   */
+  private armAckWatchdog(localId: string): void {
+    const conn = this.connId
+    window.setTimeout(() => {
+      const p = this.pending.get(localId)
+      if (!p || p.acked || p.failed) return // confirmado (ack/log) o ya descartado
+      if (p.sentOnConn !== conn) return // ya volvió a salir por otra conexión
+      if (this.connId !== conn) return // la conexión ya cambió: nada que cortar
+      if (this.ws?.readyState !== WebSocket.OPEN) return // ya lo gestiona onclose
+      this.forceReconnect()
+    }, ACK_TIMEOUT_MS)
+  }
+
+  /**
+   * Reenvía los envíos de una sesión que el snapshot NO confirma. Reglas
+   * exactas (nada de heurísticas): un envío está confirmado si llegó su `ack` o
+   * si su `localId` aparece en el log; y solo se reenvía lo que salió por una
+   * conexión ANTERIOR (lo enviado por la actual sigue en vuelo con su ack).
+   */
+  private resendPending(sessionId: string): void {
+    let changed = false
+    for (const p of this.pending.values()) {
+      if (p.sessionId !== sessionId || p.failed) continue
+      if (p.acked) continue // el server ya lo aceptó: reenviarlo sobra
+      if (p.sentOnConn === this.connId) continue // en vuelo por esta conexión
+      if (p.attempts >= PENDING_MAX_ATTEMPTS || Date.now() - p.firstSentAt > PENDING_TTL_MS) {
+        // Se acabaron los intentos: mejor decir la verdad que fingir el envío.
+        p.failed = true
+        changed = true
+        continue
+      }
+      p.attempts += 1
+      this.dispatchPending(p)
+      changed = true
+    }
+    if (changed) this.refreshPending(sessionId)
+  }
+
+  /**
+   * Barrido periódico (red de seguridad): pide snapshot de las sesiones con
+   * envíos que salieron por una conexión anterior y siguen sin confirmar —
+   * decide `applySnapshot` — y marca como no entregado lo que pasó del TTL
+   * TENIENDO conexión (sin red no se acusa al mensaje: la tira ya lo explica).
+   * Los que YA tienen `ack` quedan fuera del barrido: están aceptados por el
+   * server y pueden tardar lo que tarde su slot de concurrencia; caducarlos
+   * sería mentir ("No entregado" sobre algo entregado).
+   */
+  private sweepPending(): void {
+    if (this.pending.size === 0) return
+    const online = this.ws?.readyState === WebSocket.OPEN
+    const now = Date.now()
+    const touched = new Set<string>()
+
+    for (const p of this.pending.values()) {
+      if (p.failed || p.acked || p.sentOnConn === this.connId || !online) continue
+      if (!this.getSession(p.sessionId)) continue
+      if (now - p.firstSentAt > PENDING_TTL_MS) {
+        p.failed = true
+        touched.add(p.sessionId)
+        continue
+      }
+      this.resendAfterSnapshot.add(p.sessionId)
+      this.sendNow({ type: 'attach', sessionId: p.sessionId })
+    }
+    for (const id of touched) this.refreshPending(id)
   }
 
   // ---- Acciones públicas (fachada del hook) ------------------------------
 
+  /**
+   * Activa una pestaña de la tira. Si el id NO está en la tira (caso real: el
+   * deep-link de una notificación push apunta a una conversación que no está
+   * abierta), activarlo dejaría un `activeId` FANTASMA: `applySnapshot` hace
+   * early-return para sesiones que no están en `sessions`, así que el usuario
+   * aterrizaría en un chat vacío para siempre. En ese caso se reabre con su meta
+   * del historial y, si no se encuentra, se ignora la selección (el usuario se
+   * queda donde estaba, que es mejor que un hilo fantasma).
+   */
   selectSession = (id: string): void => {
+    if (!id) return
+    if (!this.getSession(id)) {
+      void this.fetchHistory().then((list) => {
+        const meta = list.find((s) => s.id === id)
+        if (meta) this.reopenSession({ id: meta.id, title: meta.title })
+      })
+      return
+    }
     this.setActive(id)
     this.attach(id) // por si aún no estaba suscrita (idempotente)
   }
@@ -730,21 +1299,117 @@ class ChatStore {
     })
   }
 
-  /** Historial completo (scope=all) para el panel. NO entra en el snapshot; lo consume la UI. */
-  fetchHistory = async (): Promise<Array<{ id: string; title: string; updatedAt: string; open: boolean }>> => {
+  /** Historial completo (scope=all) para el panel. NO entra en el snapshot; lo consume la UI.
+   *  Incluye `claudeSessionId` para poder deduplicar contra el historial del engine. */
+  fetchHistory = async (): Promise<
+    Array<{ id: string; title: string; updatedAt: string; open: boolean; claudeSessionId?: string | null }>
+  > => {
     try {
       const r = await fetch('/api/chat/sessions?scope=all', { credentials: 'include' })
       if (!r.ok) return []
-      const data: { sessions?: Array<{ id: string; title: string; updatedAt: string; open: boolean }> } = await r.json()
+      const data: {
+        sessions?: Array<{ id: string; title: string; updatedAt: string; open: boolean; claudeSessionId?: string | null }>
+      } = await r.json()
       return Array.isArray(data.sessions) ? data.sessions : []
     } catch {
       return []
     }
   }
 
+  /**
+   * Historial REAL del ENGINE (Claude Code / CLI): las conversaciones del proyecto
+   * abierto que viven como transcripts `.jsonl` en ~/.claude/projects (incluidas las
+   * de VS Code). Es POR PROYECTO, así que necesita el cwd del workspace activo; sin
+   * cwd devuelve []. Solo lectura; lo consume el panel de historial.
+   */
+  fetchEngineHistory = async (
+    cwd: string | null,
+  ): Promise<Array<{ id: string; title: string; updatedAt: string; gitBranch: string | null; messageCount: number }>> => {
+    if (!cwd) return []
+    try {
+      const r = await fetch(`/api/chat/engine/sessions?cwd=${encodeURIComponent(cwd)}`, {
+        credentials: 'include',
+      })
+      if (!r.ok) return []
+      const data: {
+        sessions?: Array<{ id: string; title: string; updatedAt: string; gitBranch: string | null; messageCount: number }>
+      } = await r.json()
+      return Array.isArray(data.sessions) ? data.sessions : []
+    } catch {
+      return []
+    }
+  }
+
+  /**
+   * Abre una conversación del ENGINE (transcript `.jsonl` de ~/.claude/projects; p.ej.
+   * una de VS Code) como pestaña. Flujo: descarga el hilo ya convertido a LogEvent[] →
+   * lo MATERIALIZA en SQLite (upsert con thread + claudeSessionId, reusando el sessionId
+   * del engine como id de la pestaña → dedup natural) → la activa y attach para repintar.
+   * El `await` del PATCH es OBLIGATORIO: el runtime del server lee el hilo de SQLite en el
+   * `attach`, así que la fila tiene que existir ANTES de suscribirse. Reanuda con `resume`.
+   */
+  openEngineSession = async (meta: { id: string; cwd: string | null }): Promise<void> => {
+    const { cwd } = meta
+    if (!cwd) return
+    // Ya materializada como pestaña (abierta antes en esta sesión): basta activarla.
+    if (this.getSession(meta.id)) {
+      this.setActive(meta.id)
+      this.attach(meta.id)
+      return
+    }
+    let session: { id: string; title: string; claudeSessionId: string | null; thread: unknown[] }
+    try {
+      const r = await fetch(
+        `/api/chat/engine/sessions/${encodeURIComponent(meta.id)}?cwd=${encodeURIComponent(cwd)}`,
+        { credentials: 'include' },
+      )
+      if (!r.ok) return
+      const data = (await r.json()) as {
+        session?: { id: string; title: string; claudeSessionId: string | null; thread: unknown[] }
+      }
+      if (!data.session) return
+      session = data.session
+    } catch {
+      return
+    }
+    // Materializa en SQLite ANTES de attach (el runtime lee el hilo de ahí). Se espera.
+    try {
+      await fetch(`/api/chat/sessions/${encodeURIComponent(session.id)}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: session.title,
+          claudeSessionId: session.claudeSessionId,
+          thread: session.thread,
+          open: true,
+        }),
+      })
+    } catch {
+      return
+    }
+    if (!this.getSession(session.id)) {
+      const s: ChatSession = {
+        id: session.id,
+        name: session.title,
+        items: [],
+        open: true,
+        ...(session.claudeSessionId ? { claudeSessionId: session.claudeSessionId } : {}),
+      }
+      this.setState({ sessions: [...this.state.sessions, s] })
+    }
+    this.setActive(session.id)
+    this.attach(session.id)
+  }
+
   /** Quita una pestaña de la tira, activa un vecino y nunca deja 0 pestañas. */
   private removeFromStrip(id: string, idx: number): void {
     this.cursors.delete(id)
+    this.threads.delete(id)
+    this.eventCounts.delete(id)
+    // Envíos pendientes de una pestaña cerrada: no tiene sentido reenviarlos.
+    for (const [localId, p] of this.pending) if (p.sessionId === id) this.pending.delete(localId)
+    this.resendAfterSnapshot.delete(id)
     let next = this.state.sessions.filter((s) => s.id !== id)
     let activeId = this.state.activeId
 
@@ -786,16 +1451,52 @@ class ChatStore {
           ? { effort: this.state.effort }
           : {}
 
-    this.raw({
+    const localId = uid('u')
+    const frame: Record<string, unknown> = {
       type: 'message',
       sessionId,
-      localId: uid('u'),
+      localId,
       text: trimmed,
       ...(cwd ? { cwd } : {}),
       ...(this.state.model ? { model: this.state.model } : {}),
       mode: this.state.permissionMode,
       ...effortPayload,
-    })
+    }
+    // Pendiente hasta que su burbuja aparezca en el LOG del server (el `ack` solo
+    // confirma la recepción). La burbuja se pinta YA desde aquí y se sustituye
+    // sin parpadeo por la del log (mismo id); si el envío se pierde, se reenvía
+    // o se marca no entregado.
+    const now = Date.now()
+    const p: PendingSend = {
+      localId,
+      sessionId,
+      text: trimmed,
+      frame,
+      firstSentAt: now,
+      sentAt: now,
+      sentOnConn: this.connId,
+      attempts: 1,
+      acked: false,
+      failed: false,
+    }
+    this.pending.set(localId, p)
+    this.refreshPending(sessionId)
+    this.dispatchPending(p)
+  }
+
+  /** Reintento manual de un mensaje marcado como no entregado (burbuja fallida). */
+  retryMessage = (localId: string): void => {
+    const p = this.pending.get(localId)
+    if (!p) return
+    p.failed = false
+    // Reintento = envío nuevo: el `ack` anterior ya no vale como confirmación
+    // (el server que lo aceptó pudo reiniciarse). El nuevo `ack` lo re-confirma.
+    p.acked = false
+    p.attempts = 1
+    p.firstSentAt = Date.now()
+    this.refreshPending(p.sessionId)
+    this.attach(p.sessionId)
+    this.dispatchPending(p)
   }
 
   decide = (requestId: string, decision: UserEditDecision): void => {
@@ -807,20 +1508,20 @@ class ChatStore {
       requestId,
       decision: decision === 'applied' ? 'allow' : 'deny',
     })
-    // Refleja la decisión en la card de inmediato (el tool_result confirmará luego).
-    this.updateSession(sessionId, (s) => ({
-      ...s,
-      items: s.items.map((it) =>
-        it.kind === 'assistant'
-          ? {
-              ...it,
-              blocks: it.blocks.map((b) =>
-                'requestId' in b && b.requestId === requestId ? { ...b, decision } : b
-              ),
-            }
-          : it
-      ),
-    }))
+    this.armSendWatchdog() // resolver un permiso siempre mueve el hilo
+    // Refleja la decisión en la card de inmediato (el tool_result confirmará
+    // luego). Va sobre el hilo del server para que no la pise el próximo evento.
+    const items = (this.threads.get(sessionId) ?? []).map((it) =>
+      it.kind === 'assistant'
+        ? {
+            ...it,
+            blocks: it.blocks.map((b) =>
+              'requestId' in b && b.requestId === requestId ? { ...b, decision } : b
+            ),
+          }
+        : it
+    )
+    this.commitThread(sessionId, items)
   }
 
   setModel = (model: string): void => {
@@ -844,7 +1545,32 @@ class ChatStore {
 
   /** Aborta el turno vivo de la sesión activa (+ vacía su cola). */
   interrupt = (): void => {
-    this.raw({ type: 'stop', sessionId: this.state.activeId })
+    const sessionId = this.state.activeId
+    this.raw({ type: 'stop', sessionId })
+    this.armSendWatchdog() // el stop responde con `status`
+    // El `stop` DESCARTA en el server lo aceptado que aún no arrancó (la cola y
+    // lo que esperaba slot): su evento `user` no llegará nunca al log, así que
+    // sus burbujas se marcan NO ENTREGADO (con reintento) en vez de quedarse
+    // "enviando" para siempre. Si alguna sí había arrancado, su evento `user`
+    // llega igual y retira el pendiente: la marca se corrige sola.
+    // Los envíos SIN `ack` no se tocan: pueden llegar después del stop y arrancar
+    // un turno legítimo.
+    let changed = false
+    for (const p of this.pending.values()) {
+      if (p.sessionId !== sessionId || !p.acked || p.failed) continue
+      p.failed = true
+      changed = true
+    }
+    if (changed) this.refreshPending(sessionId)
+  }
+
+  /** Reintento manual desde la UI (tira de estado): socket + lista de pestañas. */
+  retryConnection = (): void => {
+    this.sessionsAttempt = 0
+    this.clearSessionsRetry()
+    if (this.state.sessionsError || this.state.sessions.length === 0) this.loadSessions()
+    if (this.ws?.readyState === WebSocket.OPEN) this.probe()
+    else this.reconnectNow()
   }
 }
 

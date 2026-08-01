@@ -59,12 +59,35 @@
 > no poder escribir mientras trabaja · el turno muere al apagar pantalla/salir · faltan notificaciones):
 > sigue siendo la **siguiente feature grande**, aún sin empezar.
 
-- [ ] **A. Backbone server**: `SessionRuntime` (turno desacoplado del WS, cola, concurrencia `CHAT_MAX_CONCURRENT_TURNS`),
+> **COMPLETADA 2026-07-26** (8ª sesión) — A, B y C implementados, revisados (1ª entrega RECHAZADA, ver
+> `log.md`) y **desplegados**. Falta el QA en el iPhone. La Fase 4 se amplió con la **terminal persistente**
+> (el pty tampoco sobrevivía al socket) y el **heartbeat**, que no estaban en el plan original.
+
+- [x] **A. Backbone server**: `SessionRuntime` (turno desacoplado del WS, cola, concurrencia `CHAT_MAX_CONCURRENT_TURNS`),
       `bridge.ts` emitiendo a un sink en vez de al `ws`, WS multiplexado (`attach/detach/message/stop`, snapshot-on-attach,
       broadcast) en `ws.ts`+`index.ts`. Default permission mode → bypass. Persistencia server-side del hilo vivo.
 - [ ] **B. Cliente**: `chatStore.ts` al protocolo nuevo (estado de turno por sesión, sin `pendingLocalId` global,
       re-attach + snapshot al reconectar, enviar-mientras-trabaja = encolar, N sesiones en streaming a la vez).
 - [ ] **C. Push**: `web-push` + VAPID + tabla `push_subscriptions`; `sw.js` (push + notificationclick); registro SW +
       toggle "Notificaciones" en Settings. Disparo al terminar/error sin subscriber activo. (Caveat iOS PWA.)
-- [ ] **Verificación**: typecheck + build (client+server) verdes; smoke del ciclo (attach→message→cerrar socket→
+- [x] **Verificación**: typecheck + build (client+server) verdes; smoke del ciclo (attach→message→cerrar socket→
       el turno sigue→reattach recupera→push). Actualizar `estado.md`/`log.md`.
+
+## Pendientes abiertos (2026-07-26)
+
+- [ ] **QA del push en el iPhone** — la cadena servidor→Apple está verificada (suscripción registrada y
+      envío manual con `201`), pero **falta confirmar la entrega en el dispositivo** y que los disparos
+      automáticos ("sigue trabajando" al irse con turno vivo / "terminó") lleguen cuando toca. Nota de
+      tiempos: tras bloquear la pantalla, el socket tarda hasta ~60 s en darse por muerto (heartbeat de
+      30 s × 2) y luego hay 20 s de debounce → el aviso de "sigue trabajando" puede tardar **~80 s**.
+      Si hace falta, bajar `PUSH_WORKING_DELAY_MS` y/o el intervalo del heartbeat.
+- [x] **~~REVISAR LO DEL SSH~~ → RESUELTO 2026-07-31: backend en el host (systemd).** SSH descartado
+      (PortaIDE vive en el mismo VPS). Código del repo migrado (compose/nginx/env/systemd/deploy). Ver
+      ADR "Backend en el HOST (systemd)" en `decisiones.md`.
+- [ ] **EJECUTAR la migración a host** (acción del host, no del contenedor) — seguir `deploy/README.md`:
+      **paso 0 Tailscale** (endurecer borde) → UFW cerrar 4100 → `npm ci && build` en host → systemd
+      `enable --now` → rebuild frontend → bajar `portaide-backend` Docker viejo → verificar. El fix del
+      selector de carpeta se despliega junto con esto.
+- [ ] **QA del resto de la 8ª sesión en el móvil**: terminal que sobrevive a cambiar de vista / bloquear /
+      cerrar la app, varias pestañas a la vez, aviso de shell muerta, mensajes sin red (burbuja "No
+      entregado" + reintentar), tira de conexión solo cuando hay problema.

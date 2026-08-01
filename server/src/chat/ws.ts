@@ -102,7 +102,15 @@ export function handleChatConnection(
     switch (msg.type) {
       case 'attach': {
         attached.add(sessionId);
-        void runtimeManager.get(sessionId).attach(ws);
+        // `.catch` obligatorio: una promesa rechazada sin manejar TUMBA el proceso
+        // en Node 20 (unhandledRejection → exit), y este server tiene que seguir
+        // trabajando con el móvil apagado (decisiones.md · "Chat en segundo plano").
+        void runtimeManager
+          .get(sessionId)
+          .attach(ws)
+          .catch((err: unknown) => {
+            console.error(`[chat] attach falló (sesión ${sessionId}):`, err);
+          });
         return;
       }
 
@@ -134,7 +142,19 @@ export function handleChatConnection(
             await rt.attach(ws);
           }
           await rt.enqueueMessage(incoming);
-        })();
+          // ACK de recepción. El cliente reenvía los mensajes no confirmados al
+          // reconectar (el móvil pierde el socket sin avisar: queda "zombi" en
+          // OPEN y el `send` se traga el mensaje). Sin este ack el cliente tenía
+          // que ADIVINAR si el server ya lo tenía —comparando con `queueLength`—
+          // y una conjetura errónea duplica un turno entero del agente.
+          if (ws.readyState === ws.OPEN) {
+            ws.send(JSON.stringify({ type: 'ack', sessionId, localId }));
+          }
+          // Sin `.catch` un fallo aquí (attach o enqueue) sería una promesa
+          // rechazada sin manejar → el proceso entero se cae en Node 20.
+        })().catch((err: unknown) => {
+          console.error(`[chat] no se pudo encolar el mensaje (sesión ${sessionId}):`, err);
+        });
         return;
       }
 

@@ -35,8 +35,11 @@
   animation: itemIn 0.18s ease;
 }
 
+/* Columna a la derecha: burbuja + (si falla) pie de "no entregado" */
 .userItem {
-  justify-content: flex-end;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
 }
 
 /* Columna del asistente: mensaje + indicador de streaming apilados */
@@ -70,6 +73,58 @@
   font-size: 13.5px;
   line-height: 19px;
   overflow-wrap: break-word;
+}
+
+/* Entrega pendiente (enviado, sin confirmar) o fallida: burbuja atenuada
+   (DESIGN.md §6.3). En cuanto el server confirma vuelve a opacidad plena. */
+.userBubblePending {
+  opacity: 0.62;
+  transition: opacity 0.18s ease;
+}
+
+/* Pie de mensaje no entregado: aviso mono + acción de reintento */
+.undelivered {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10.5px;
+  line-height: 1.2;
+}
+
+.undeliveredLabel {
+  color: var(--red);
+}
+
+.undeliveredRetry {
+  min-height: 24px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface2);
+  font-family: inherit;
+  font-size: 10.5px;
+  color: var(--accent);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s ease;
+}
+
+.undeliveredRetry:active {
+  background: var(--surface);
+}
+
+.undeliveredRetry:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .userBubblePending,
+  .undeliveredRetry {
+    transition: none;
+  }
 }
 
 /* ---------- Typing: tres puntos --accent, animación `dot` (DESIGN.md §11) ---------- */

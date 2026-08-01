@@ -95,6 +95,15 @@
   background: var(--faint);
 }
 
+/* Shell MUERTA: cuadrado (no punto) en --red — distinto de "sin conexión", que
+   es un punto rojo. La forma, además del color, distingue de un vistazo (§12). */
+.dotDead {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--red);
+}
+
 .tabName {
   font-family: 'JetBrains Mono', monospace;
   font-size: 12px;
@@ -159,6 +168,9 @@
   outline-offset: -2px;
 }
 
+/* La tira de estado de conexión NO vive aquí: es el componente compartido
+   `components/ConnBanner` (DESIGN.md §6.3), el mismo que usa el Chat. */
+
 /* ---------- Área de terminales ---------- */
 
 .panes {
@@ -190,47 +202,78 @@
   padding: 6px 8px 0;
 }
 
-/* Overlay sobrio de estado (cierre/error) con acción de reconexión */
-.overlay {
+/* Con el aviso de sesión terminada abajo, se le reserva su alto: FitAddon
+   descuenta el padding, así que la salida final NO queda tapada. */
+.hostDead {
+  padding-bottom: 46px;
+}
+
+/* ---------- Aviso de sesión terminada (DESIGN.md §9) ----------
+   Barra anclada ABAJO (no overlay): la salida final del proceso, que el
+   snapshot acaba de repintar, tiene que quedarse legible. */
+
+.dead {
   position: absolute;
-  inset: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 20px;
-  background: color-mix(in srgb, var(--bg) 82%, transparent);
-  text-align: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 5px 10px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  animation: deadIn 0.18s ease;
 }
 
-.overlayText {
-  margin: 0;
+@keyframes deadIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+/* Mismo cuadrado que marca la pestaña muerta en la tira */
+.deadMark {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--red);
+}
+
+.deadText {
+  flex: 1;
+  min-width: 0;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 12.5px;
+  font-size: 12px;
   color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.reconnect {
-  min-height: 40px;
-  padding: 9px 16px;
+.deadAction {
+  flex: none;
+  min-height: 34px;
+  padding: 0 12px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface2);
   color: var(--text);
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 600;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
   cursor: pointer;
   transition: transform 0.16s ease-out;
 }
 
-.reconnect:active {
-  transform: scale(0.98);
+.deadAction:active {
+  transform: scale(0.96);
 }
 
-.reconnect:focus-visible {
-  outline: 2px solid var(--accent2);
+.deadAction:focus-visible {
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
@@ -289,13 +332,24 @@
 
 @media (prefers-reduced-motion: reduce) {
   .add,
-  .reconnect,
+  .deadAction,
   .key {
     transition: none;
   }
 
   .add:active,
-  .reconnect:active {
+  .deadAction:active {
     transform: none;
+  }
+
+  /* Sin desplazamiento: sólo el fade (DESIGN.md §11) */
+  .dead {
+    animation-name: deadInReduced;
+  }
+
+  @keyframes deadInReduced {
+    from {
+      opacity: 0;
+    }
   }
 }
