@@ -31,9 +31,11 @@ import type {
   ChatEffortSetting,
   ChatItem,
   ChatPermissionMode,
+  ChatQuestion,
   ChatSession,
   DiffLine,
   EditDecision,
+  QuestionOption,
   UserEditDecision,
 } from './types'
 
@@ -78,6 +80,12 @@ export interface StoreSnapshot {
   loading: boolean
   /** true si la lista de conversaciones (REST) falló; se reintenta sola (backoff). */
   sessionsError: boolean
+  /**
+   * Workspace activo (WorkspaceProvider), sincronizado por la vista. Es la
+   * carpeta que HEREDA una conversación todavía sin anclar (`session.cwd` null):
+   * lo que se pinta en el chip y lo que se fija como ancla al primer mensaje.
+   */
+  defaultCwd: string | null
 }
 
 // --- Timings de conexión (móvil: background, cambio de red, socket zombi) ---
@@ -254,7 +262,41 @@ function buildEditBlock(
   return { type: 'edit', id, file, additions, deletions, diff, decision: 'pending' }
 }
 
-/** Mapea un tool_use a su bloque de UI (Read / Edit / Bash / genérico). */
+/**
+ * Normaliza el input de `AskUserQuestion` (el tool_use llega ANTES que el
+ * `question_request`, así que la card se pinta ya con sus opciones). Devuelve
+ * null si no tiene la forma esperada → card genérica, como cualquier otra tool.
+ */
+function parseQuestions(input: unknown): ChatQuestion[] | null {
+  const raw = (input as { questions?: unknown } | null)?.questions
+  if (!Array.isArray(raw) || raw.length === 0) return null
+  const out: ChatQuestion[] = []
+  for (const item of raw) {
+    const q = item as Partial<ChatQuestion> | null
+    if (!q || typeof q.question !== 'string' || !q.question || !Array.isArray(q.options)) return null
+    const options: QuestionOption[] = []
+    for (const o of q.options) {
+      const opt = o as Partial<QuestionOption> | null
+      if (!opt || typeof opt.label !== 'string' || !opt.label) return null
+      options.push({
+        label: opt.label,
+        ...(typeof opt.description === 'string' && opt.description
+          ? { description: opt.description }
+          : {}),
+      })
+    }
+    if (options.length === 0) return null
+    out.push({
+      question: q.question,
+      header: typeof q.header === 'string' && q.header ? q.header : 'Question',
+      multiSelect: q.multiSelect === true,
+      options,
+    })
+  }
+  return out
+}
+
+/** Mapea un tool_use a su bloque de UI (Read / Edit / Bash / pregunta / genérico). */
 function buildToolBlock(id: string, name: string, input: unknown): AssistantBlock {
   if (name === 'Read') {
     return { type: 'read', id, file: shortPath((input as Record<string, unknown>)?.file_path), meta: 'reading…' }
@@ -266,7 +308,21 @@ function buildToolBlock(id: string, name: string, input: unknown): AssistantBloc
     const command = String((input as Record<string, unknown>)?.command ?? '')
     return { type: 'bash', id, command, output: [], decision: 'pending' }
   }
+  if (name === 'AskUserQuestion') {
+    const questions = parseQuestions(input)
+    if (questions) return { type: 'question', id, questions, decision: 'pending' }
+  }
   return { type: 'tool', id, name, meta: shortInput(input), decision: 'pending' }
+}
+
+/**
+ * ¿La conversación ya arrancó? Es la condición que CONGELA su carpeta de
+ * proyecto (el ancla `cwd`): con un solo mensaje en el hilo —o un turno vivo, o
+ * un `claudeSessionId` del engine— cambiarla partiría el historial y el `resume`.
+ * Vive aquí (y no en la vista) para que store y UI usen la MISMA definición.
+ */
+export function isChatStarted(session: ChatSession): boolean {
+  return session.items.length > 0 || session.streaming === true || Boolean(session.claudeSessionId)
 }
 
 /** Heurística ligera: línea de salida "buena" (PASS/✓) → verde (DESIGN §6). */
@@ -291,6 +347,15 @@ type LogEvent =
   | { type: 'tool_use'; id: string; name: string; input: unknown }
   | { type: 'tool_result'; id: string; ok: boolean; output?: string }
   | { type: 'permission_request'; requestId: string; toolName: string; input: unknown }
+  | { type: 'question_request'; requestId: string; questions: ChatQuestion[] }
+  | {
+      type: 'permission_resolved'
+      requestId: string
+      decision: 'allow' | 'deny'
+      /** 'interrupted' = se cerró sin decisión del usuario (turno abortado). */
+      reason?: 'user' | 'interrupted'
+    }
+  | { type: 'question_answered'; requestId: string; answers: Record<string, string> }
   | { type: 'assistant_done' }
   | { type: 'result'; subtype: string }
   | { type: 'error'; message: string }
@@ -373,6 +438,45 @@ function markPending(blocks: AssistantBlock[], requestId: string, toolName: stri
   return [...blocks, { type: 'tool', id: requestId, requestId, name: toolName, meta: shortInput(input), decision: 'pending' }]
 }
 
+/**
+ * Marca la card de preguntas como pendiente de responder (el `question_request`
+ * trae el requestId con el que se contesta). Si el tool_use aún no llegó, crea
+ * la card con las preguntas del propio evento.
+ */
+function markQuestion(
+  blocks: AssistantBlock[],
+  requestId: string,
+  questions: ChatQuestion[]
+): AssistantBlock[] {
+  const idx = blocks.findIndex((b) => 'id' in b && b.id === requestId)
+  if (idx >= 0) {
+    return blocks.map((b, i) => {
+      if (i !== idx) return b
+      if (b.type === 'question') return { ...b, requestId, decision: 'pending' as EditDecision }
+      // El tool_use se pintó como card genérica (el input no parseó en el
+      // cliente): se REEMPLAZA por la card de preguntas del server, que sí trae
+      // las opciones. Devolverlo intacto dejaba una card imposible de responder
+      // y el turno colgado esperando una respuesta que no podía darse.
+      return { type: 'question', id: requestId, requestId, questions, decision: 'pending' }
+    })
+  }
+  return [...blocks, { type: 'question', id: requestId, requestId, questions, decision: 'pending' }]
+}
+
+/** Fija la decisión de la card cuyo `requestId` coincide (resolución del server). */
+function applyResolution(
+  blocks: AssistantBlock[],
+  requestId: string,
+  decision: EditDecision,
+  answers?: Record<string, string>
+): AssistantBlock[] {
+  return blocks.map((b) => {
+    if (!('requestId' in b) || b.requestId !== requestId) return b
+    if (b.type === 'question') return { ...b, decision, ...(answers ? { answers } : {}) }
+    return { ...b, decision }
+  })
+}
+
 function applyResult(blocks: AssistantBlock[], id: string, ok: boolean, output: string): AssistantBlock[] {
   return blocks.map((b) => {
     if (!('id' in b) || b.id !== id) return b
@@ -396,10 +500,47 @@ function applyResult(blocks: AssistantBlock[], id: string, ok: boolean, output: 
         }
       case 'tool':
         return { ...b, ok, meta: ok ? b.meta : 'error', decision: autoDecision(b.decision, b.requestId) }
+      case 'question':
+        // Ya respondida (o descartada) → se respeta; si el turno acabó sin
+        // decisión nuestra, deja de pedirla.
+        return b.decision === 'pending' ? { ...b, decision: 'auto' as EditDecision } : b
       default:
         return b
     }
   })
+}
+
+/**
+ * Normaliza la cola que viaja en `snapshot`/`status` (server → burbujas).
+ * `null` = el frame no la trae (server viejo / trama incompleta): se CONSERVA la
+ * cola que ya se pintaba, en vez de borrarla y hacer desaparecer mensajes que el
+ * server sigue teniendo. Array vacío sí significa "cola vacía".
+ */
+function parseQueue(raw: unknown): { localId: string; text: string }[] | null {
+  if (!Array.isArray(raw)) return null
+  const out: { localId: string; text: string }[] = []
+  for (const item of raw) {
+    const q = item as { localId?: unknown; text?: unknown } | null
+    if (!q || typeof q.localId !== 'string' || typeof q.text !== 'string') continue
+    out.push({ localId: q.localId, text: q.text })
+  }
+  return out
+}
+
+/** Busca la card con ese `requestId` en TODO el hilo y le fija la decisión. */
+function resolveInItems(
+  acc: Assembler,
+  requestId: string,
+  decision: EditDecision,
+  answers?: Record<string, string>
+): void {
+  for (let i = acc.items.length - 1; i >= 0; i -= 1) {
+    const it = acc.items[i]
+    if (!it || it.kind !== 'assistant') continue
+    if (!it.blocks.some((b) => 'requestId' in b && b.requestId === requestId)) continue
+    acc.items[i] = { ...it, blocks: applyResolution(it.blocks, requestId, decision, answers) }
+    return
+  }
 }
 
 /** Aplica UN evento del log al acumulador (muta acc). `session` se maneja fuera. */
@@ -428,6 +569,26 @@ function reduceEvent(acc: Assembler, ev: LogEvent): void {
       return
     case 'permission_request':
       mutateBlocks(acc, (b) => markPending(b, ev.requestId, ev.toolName, ev.input))
+      return
+    case 'question_request':
+      mutateBlocks(acc, (b) => markQuestion(b, ev.requestId, ev.questions))
+      return
+    // Las resoluciones pueden llegar con el turno YA cerrado (al interrumpir se
+    // deniega lo que colgaba), así que se aplican sobre el item que contiene esa
+    // card —nunca con `mutateBlocks`, que abriría un mensaje vacío al final—.
+    case 'permission_resolved':
+      resolveInItems(
+        acc,
+        ev.requestId,
+        ev.decision === 'allow'
+          ? 'applied'
+          : ev.reason === 'interrupted'
+            ? 'interrupted'
+            : 'rejected'
+      )
+      return
+    case 'question_answered':
+      resolveInItems(acc, ev.requestId, 'applied', ev.answers)
       return
     case 'assistant_done':
       acc.thinkingOpen = false
@@ -486,6 +647,7 @@ class ChatStore {
     connStatus: 'closed',
     loading: true,
     sessionsError: false,
+    defaultCwd: null,
   }
 
   private listeners = new Set<() => void>()
@@ -520,6 +682,12 @@ class ChatStore {
   private pending = new Map<string, PendingSend>()
   /** Sesiones cuyo próximo snapshot decide si hay que reenviar pendientes. */
   private resendAfterSnapshot = new Set<string>()
+  /**
+   * Mensajes EN COLA en el server, por sesión (los manda en `snapshot`/`status`).
+   * Es el server quien manda: así la cola se ve igual tras recargar la PWA o
+   * desde otro dispositivo, y se puede cancelar lo que aún no ha arrancado.
+   */
+  private serverQueue = new Map<string, { localId: string; text: string }[]>()
   /** Sesiones a las que este socket ya mandó `attach` (se limpia al reconectar). */
   private attached = new Set<string>()
   /** requestId de aprobación → sessionId (para enrutar el decide en multi-sesión). */
@@ -577,7 +745,7 @@ class ChatStore {
     // `snapshot` de cada `attach` (el server es autoritativo del hilo).
     fetch('/api/chat/sessions?scope=open', { credentials: 'include' })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error('http'))))
-      .then((data: { sessions?: { id: string; title: string; claudeSessionId?: string | null }[] }) => {
+      .then((data: { sessions?: { id: string; title: string; claudeSessionId?: string | null; cwd?: string | null }[] }) => {
         const list = Array.isArray(data.sessions) ? data.sessions : []
         const sessions: ChatSession[] = list.map((d) => ({
           id: d.id,
@@ -585,6 +753,8 @@ class ChatStore {
           items: [],
           open: true,
           ...(d.claudeSessionId ? { claudeSessionId: d.claudeSessionId } : {}),
+          // Ancla de proyecto persistida (null = la conversación aún no arrancó).
+          cwd: d.cwd ?? null,
         }))
         // Conserva las pestañas locales que el server aún no conoce (creadas
         // mientras la lista no había cargado): no se pisan con la respuesta.
@@ -628,8 +798,12 @@ class ChatStore {
     }, delay)
   }
 
+  /**
+   * Pestaña nueva SIN anclar (`cwd: null`): hereda el workspace activo hasta que
+   * se envía el primer mensaje (o el usuario elige otra carpeta desde el chip).
+   */
   private newLocalSession(): ChatSession {
-    return { id: newSessionId(), name: 'new chat', items: [], open: true }
+    return { id: newSessionId(), name: 'new chat', items: [], open: true, cwd: null }
   }
 
   // ---- Ciclo de vida (background ⇄ primer plano) --------------------------
@@ -936,12 +1110,14 @@ class ChatStore {
     if (!sessionId) return
     switch (frame.type) {
       case 'snapshot':
+        this.setServerQueue(sessionId, frame.queue)
         this.applySnapshot(
           sessionId,
           Array.isArray(frame.events) ? (frame.events as LogEvent[]) : [],
           typeof frame.status === 'string' ? (frame.status as TurnStatus) : 'idle',
           typeof frame.claudeSessionId === 'string' ? frame.claudeSessionId : null,
-          typeof frame.queueLength === 'number' ? frame.queueLength : 0
+          typeof frame.queueLength === 'number' ? frame.queueLength : 0,
+          typeof frame.cwd === 'string' ? frame.cwd : null
         )
         return
       case 'event':
@@ -949,13 +1125,17 @@ class ChatStore {
           this.applyLive(sessionId, frame.event as LogEvent)
         }
         return
-      case 'status':
+      case 'status': {
+        this.setServerQueue(sessionId, frame.queue)
         this.updateSession(sessionId, (s) => ({
           ...s,
           streaming: frame.status === 'running' || frame.status === 'queued',
           queued: typeof frame.queueLength === 'number' ? frame.queueLength : s.queued,
         }))
+        // La cola cambió (entró, arrancó o se canceló uno): repinta las burbujas.
+        this.refreshPending(sessionId)
         return
+      }
       case 'ack': {
         // Confirmación AUTORITATIVA de RECEPCIÓN (el server ya lo aceptó). NO
         // retira la burbuja local: el evento `user` del log se registra al
@@ -988,7 +1168,9 @@ class ChatStore {
     events: LogEvent[],
     status: TurnStatus,
     claudeSessionId: string | null,
-    queueLength: number
+    queueLength: number,
+    /** Ancla de proyecto que ya fijó el server (null = sin fijar). */
+    cwd: string | null
   ): void {
     if (!this.getSession(sessionId)) return // snapshot de una sesión ya cerrada
     const acc: Assembler = { items: [], openId: null, thinkingOpen: false, seq: 0 }
@@ -997,7 +1179,9 @@ class ChatStore {
       acc.seq = i // id determinista del assistant que abra este evento
       reduceEvent(acc, ev)
       // Registra aprobaciones pendientes del snapshot para enrutar el decide.
-      if (ev.type === 'permission_request') this.pendingPerm.set(ev.requestId, sessionId)
+      if (ev.type === 'permission_request' || ev.type === 'question_request') {
+        this.pendingPerm.set(ev.requestId, sessionId)
+      }
       // El log del server es la confirmación de entrega de nuestros envíos.
       if (ev.type === 'user') this.pending.delete(ev.id)
     })
@@ -1018,6 +1202,9 @@ class ChatStore {
       streaming: running,
       queued: queueLength,
       ...(claudeSessionId ? { claudeSessionId } : {}),
+      // El ancla del server MANDA (la fijó el primer turno, puede venir de otro
+      // dispositivo). Si aún no la ha fijado, no se pisa la elección local.
+      ...(cwd ? { cwd } : {}),
     })
     // Reenvío at-least-once: el snapshot ya dijo qué llegó y qué no.
     if (this.resendAfterSnapshot.delete(sessionId)) this.resendPending(sessionId)
@@ -1037,7 +1224,9 @@ class ChatStore {
       this.updateSession(sessionId, (s) => ({ ...s, claudeSessionId: ev.sessionId }))
       return
     }
-    if (ev.type === 'permission_request') this.pendingPerm.set(ev.requestId, sessionId)
+    if (ev.type === 'permission_request' || ev.type === 'question_request') {
+      this.pendingPerm.set(ev.requestId, sessionId)
+    }
     // El server ya tiene la burbuja: deja de ser un envío pendiente (mismo id →
     // la burbuja local se sustituye por la del log SIN parpadeo ni duplicado).
     if (ev.type === 'user') this.pending.delete(ev.id)
@@ -1100,11 +1289,27 @@ class ChatStore {
     }
   }
 
-  /** Burbujas de los envíos aún no confirmados por el server (orden de envío). */
+  /** Guarda la cola del server de una sesión; un frame sin `queue` no la borra. */
+  private setServerQueue(sessionId: string, raw: unknown): void {
+    const queue = parseQueue(raw)
+    if (queue) this.serverQueue.set(sessionId, queue)
+  }
+
+  /**
+   * Burbujas que van DESPUÉS del log del server: primero lo que el server tiene
+   * EN COLA (confirmado, cancelable) y luego lo que aún no ha confirmado. Un
+   * mismo `localId` puede estar en ambos sitios (el pendiente vive hasta que su
+   * evento `user` entra en el log): gana la cola del server, que es la verdad.
+   */
   private pendingItems(sessionId: string): ChatItem[] {
     const out: ChatItem[] = []
+    const queued = this.serverQueue.get(sessionId) ?? []
+    const inQueue = new Set(queued.map((q) => q.localId))
+    for (const q of queued) {
+      out.push({ kind: 'user', id: q.localId, text: q.text, delivery: 'queued' })
+    }
     for (const p of this.pending.values()) {
-      if (p.sessionId !== sessionId) continue
+      if (p.sessionId !== sessionId || inQueue.has(p.localId)) continue
       // Con `ack` el mensaje está aceptado pero aún no en el hilo (espera slot o
       // turno): sigue siendo 'sending' — no ha empezado a responderse.
       out.push({
@@ -1212,7 +1417,7 @@ class ChatStore {
     if (!this.getSession(id)) {
       void this.fetchHistory().then((list) => {
         const meta = list.find((s) => s.id === id)
-        if (meta) this.reopenSession({ id: meta.id, title: meta.title })
+        if (meta) this.reopenSession({ id: meta.id, title: meta.title, cwd: meta.cwd })
       })
       return
     }
@@ -1263,7 +1468,12 @@ class ChatStore {
    * Reabre una conversación del historial como pestaña: marca open:true en el
    * server, la añade a la tira si no estaba, la activa y attach (→ snapshot).
    */
-  reopenSession = (meta: { id: string; title: string; claudeSessionId?: string | null }): void => {
+  reopenSession = (meta: {
+    id: string
+    title: string
+    claudeSessionId?: string | null
+    cwd?: string | null
+  }): void => {
     fetch(`/api/chat/sessions/${encodeURIComponent(meta.id)}`, {
       method: 'PATCH',
       credentials: 'include',
@@ -1279,6 +1489,8 @@ class ChatStore {
         items: [],
         open: true,
         ...(meta.claudeSessionId ? { claudeSessionId: meta.claudeSessionId } : {}),
+        // El `snapshot` del attach la reconfirma; esto evita el parpadeo del chip.
+        cwd: meta.cwd ?? null,
       }
       this.setState({ sessions: [...this.state.sessions, session] })
     }
@@ -1300,15 +1512,29 @@ class ChatStore {
   }
 
   /** Historial completo (scope=all) para el panel. NO entra en el snapshot; lo consume la UI.
-   *  Incluye `claudeSessionId` para poder deduplicar contra el historial del engine. */
+   *  Incluye `claudeSessionId` (dedup contra el engine) y `cwd` (proyecto de cada una). */
   fetchHistory = async (): Promise<
-    Array<{ id: string; title: string; updatedAt: string; open: boolean; claudeSessionId?: string | null }>
+    Array<{
+      id: string
+      title: string
+      updatedAt: string
+      open: boolean
+      claudeSessionId?: string | null
+      cwd?: string | null
+    }>
   > => {
     try {
       const r = await fetch('/api/chat/sessions?scope=all', { credentials: 'include' })
       if (!r.ok) return []
       const data: {
-        sessions?: Array<{ id: string; title: string; updatedAt: string; open: boolean; claudeSessionId?: string | null }>
+        sessions?: Array<{
+          id: string
+          title: string
+          updatedAt: string
+          open: boolean
+          claudeSessionId?: string | null
+          cwd?: string | null
+        }>
       } = await r.json()
       return Array.isArray(data.sessions) ? data.sessions : []
     } catch {
@@ -1382,6 +1608,9 @@ class ChatStore {
           title: session.title,
           claudeSessionId: session.claudeSessionId,
           thread: session.thread,
+          // Nació en ESTE proyecto (su transcript vive bajo ~/.claude/projects/<cwd>):
+          // se ancla desde el minuto uno, ya viene con hilo y no se puede mover.
+          cwd,
           open: true,
         }),
       })
@@ -1395,6 +1624,7 @@ class ChatStore {
         items: [],
         open: true,
         ...(session.claudeSessionId ? { claudeSessionId: session.claudeSessionId } : {}),
+        cwd,
       }
       this.setState({ sessions: [...this.state.sessions, s] })
     }
@@ -1407,8 +1637,14 @@ class ChatStore {
     this.cursors.delete(id)
     this.threads.delete(id)
     this.eventCounts.delete(id)
+    this.serverQueue.delete(id)
     // Envíos pendientes de una pestaña cerrada: no tiene sentido reenviarlos.
     for (const [localId, p] of this.pending) if (p.sessionId === id) this.pending.delete(localId)
+    // Ni sus permisos/preguntas pendientes (el mapa se repuebla con el snapshot
+    // si la pestaña se reabre; sin esto crecía sin fin durante toda la sesión).
+    for (const [requestId, sid] of this.pendingPerm) {
+      if (sid === id) this.pendingPerm.delete(requestId)
+    }
     this.resendAfterSnapshot.delete(id)
     let next = this.state.sessions.filter((s) => s.id !== id)
     let activeId = this.state.activeId
@@ -1430,15 +1666,59 @@ class ChatStore {
     lsSet(LS_ACTIVE, activeId)
   }
 
-  sendMessage = (text: string, cwd: string | null): void => {
+  /**
+   * Fija el ancla de proyecto de una conversación: estado local (para que el chip
+   * lo refleje ya) + PATCH best-effort. El server la fija por su cuenta al
+   * arrancar el primer turno; esto la deja escrita también cuando el turno tarda
+   * en arrancar (cola de concurrencia) o cuando se elige a mano antes de enviar.
+   */
+  private anchorCwd(sessionId: string, cwd: string): void {
+    this.updateSession(sessionId, (s) => ({ ...s, cwd }))
+    fetch(`/api/chat/sessions/${encodeURIComponent(sessionId)}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cwd }),
+    }).catch(() => {
+      /* sin persistencia: el ancla vive en memoria hasta el primer turno */
+    })
+  }
+
+  /**
+   * Cambia la carpeta (proyecto) de una conversación TODAVÍA NO INICIADA. Con el
+   * hilo empezado no hace nada: el engine indexa sus transcripts por proyecto, y
+   * mover el cwd a mitad partiría el historial y el `resume`. La UI ya oculta el
+   * botón en ese caso; esto es el guard.
+   */
+  setSessionCwd = (id: string, cwd: string): void => {
+    const session = this.getSession(id)
+    if (!session || isChatStarted(session)) return
+    this.anchorCwd(id, cwd)
+  }
+
+  /** Sincroniza el workspace activo (lo llama la vista desde WorkspaceProvider). */
+  setDefaultCwd = (cwd: string | null): void => {
+    if (this.state.defaultCwd === cwd) return
+    this.setState({ defaultCwd: cwd })
+  }
+
+  sendMessage = (text: string): void => {
     const trimmed = text.trim()
     if (!trimmed) return
     const sessionId = this.state.activeId
     const session = this.getSession(sessionId)
-    if (!session || session.streaming) return
+    if (!session) return
 
-    // Bloqueo optimista del composer hasta que el server confirme el status.
+    // Carpeta del turno = ancla de la conversación; si aún no la tiene (chat sin
+    // estrenar), el workspace activo — y este primer mensaje la deja fijada.
+    const cwd = session.cwd ?? this.state.defaultCwd
+
+    // Escribir con un turno vivo NO se bloquea: el runtime del server ENCOLA y
+    // lo procesa al terminar (como Claude Code). La burbuja se pinta ya como
+    // pendiente y pasa a 'queued' en cuanto el server confirma su cola.
+    // `streaming` optimista = hay trabajo en marcha (botón ■ con el campo vacío).
     this.updateSession(sessionId, (s) => ({ ...s, streaming: true }))
+    if (!session.cwd && cwd) this.anchorCwd(sessionId, cwd)
     this.attach(sessionId) // asegura la suscripción antes de enviar
 
     // Payload de esfuerzo por-mensaje:
@@ -1497,6 +1777,38 @@ class ChatStore {
     this.refreshPending(p.sessionId)
     this.attach(p.sessionId)
     this.dispatchPending(p)
+  }
+
+  /**
+   * Retira de la cola un mensaje que aún no ha arrancado. No se toca el hilo a
+   * mano: el server responde con su `status` (cola nueva) y de ahí se repinta.
+   * Si ya había arrancado, la cancelación no aplica y su burbuja pasa a mensaje
+   * normal — nunca se finge que se canceló.
+   */
+  cancelQueued = (localId: string): void => {
+    const p = this.pending.get(localId)
+    const sessionId = p?.sessionId ?? this.state.activeId
+    // Si seguía sin confirmar, deja de reenviarse (ya no lo queremos).
+    if (p) this.pending.delete(localId)
+    this.raw({ type: 'cancel', sessionId, localId })
+    this.armSendWatchdog()
+    this.refreshPending(sessionId)
+  }
+
+  /** Responde una pregunta de Claude (`AskUserQuestion`): {pregunta: respuesta}. */
+  answerQuestion = (requestId: string, answers: Record<string, string>): void => {
+    const sessionId = this.pendingPerm.get(requestId) ?? this.state.activeId
+    this.pendingPerm.delete(requestId)
+    this.raw({ type: 'answer', sessionId, requestId, answers })
+    this.armSendWatchdog() // responder siempre mueve el hilo
+    // Refleja la respuesta en la card sin esperar (el `question_answered` del
+    // server la confirmará y es el que sobrevive al reattach).
+    const items = (this.threads.get(sessionId) ?? []).map((it) =>
+      it.kind === 'assistant'
+        ? { ...it, blocks: applyResolution(it.blocks, requestId, 'applied', answers) }
+        : it
+    )
+    this.commitThread(sessionId, items)
   }
 
   decide = (requestId: string, decision: UserEditDecision): void => {

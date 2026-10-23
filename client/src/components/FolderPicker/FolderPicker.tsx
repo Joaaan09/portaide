@@ -1,10 +1,14 @@
 // Selector de carpeta estilo "Open Folder" de VS Code (decisiones.md 2026-07-02).
 // Navega el filesystem desde la raíz (GET /api/fs/list, solo carpetas), permite
-// entrar/salir y "Open this folder" fija el workspace (WorkspaceProvider).
+// entrar/salir y confirmar la carpeta elegida.
+//
+// Componente COMPARTIDO (antes vivía en views/Files): lo usan Files (fijar el
+// workspace) y el Chat (anclar la conversación a un proyecto). Por eso el título
+// y la etiqueta del botón son parametrizables.
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { listDir, type FsEntry, ApiError } from '../../api/client'
-import styles from './FilesView.module.css'
+import styles from './FolderPicker.module.css'
 
 interface FolderPickerProps {
   /** Raíz navegable: no se puede subir por encima de ella. */
@@ -12,8 +16,12 @@ interface FolderPickerProps {
   /** Carpeta donde arranca la navegación (el workspace actual). */
   initialPath: string
   onClose: () => void
-  /** Confirma la carpeta elegida (fija el workspace). */
+  /** Confirma la carpeta elegida. */
   onOpen: (path: string) => void
+  /** Título de la hoja (por defecto "Open folder"). */
+  title?: string
+  /** Etiqueta del botón de confirmación (por defecto "Open this folder"). */
+  confirmLabel?: string
 }
 
 function joinPath(parent: string, name: string): string {
@@ -35,7 +43,14 @@ function errText(err: unknown): string {
   return 'error al listar la carpeta'
 }
 
-export default function FolderPicker({ root, initialPath, onClose, onOpen }: FolderPickerProps) {
+export default function FolderPicker({
+  root,
+  initialPath,
+  onClose,
+  onOpen,
+  title = 'Open folder',
+  confirmLabel = 'Open this folder',
+}: FolderPickerProps) {
   const [current, setCurrent] = useState(initialPath)
   const [dirs, setDirs] = useState<FsEntry[] | null>(null)
   const [loading, setLoading] = useState(true)
@@ -75,48 +90,34 @@ export default function FolderPicker({ root, initialPath, onClose, onOpen }: Fol
   // Portal a <body>: el overlay debe escapar del contexto de apilamiento de la
   // vista (.viewport z-index:10 dentro de .shell) para poder pintarse POR ENCIMA
   // de la barra inferior de navegación (z-index:50) y el drawer (60). Si no, el
-  // footer con el botón "Open this folder" queda tapado por la barra en móvil.
+  // footer con el botón de confirmación queda tapado por la barra en móvil.
   return createPortal(
-    <div
-      className={styles.pickerOverlay}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Open folder"
-    >
+    <div className={styles.overlay} role="dialog" aria-modal="true" aria-label={title}>
       <button
         type="button"
-        className={styles.pickerScrim}
+        className={styles.scrim}
         aria-label="Cerrar selector"
         onClick={onClose}
       />
 
-      <div className={styles.pickerSheet}>
-        <div className={styles.pickerHeader}>
-          <h2 className={styles.pickerTitle}>Open folder</h2>
-          <button
-            type="button"
-            className={styles.pickerClose}
-            aria-label="Cerrar"
-            onClick={onClose}
-          >
+      <div className={styles.sheet}>
+        <div className={styles.header}>
+          <h2 className={styles.title}>{title}</h2>
+          <button type="button" className={styles.close} aria-label="Cerrar" onClick={onClose}>
             ✕
           </button>
         </div>
 
-        <p className={styles.pickerPath}>{current}</p>
+        <p className={styles.path}>{current}</p>
 
-        <ul className={styles.pickerList}>
+        <ul className={styles.list}>
           {parent !== null && (
             <li>
-              <button
-                type="button"
-                className={styles.pickerRow}
-                onClick={() => setCurrent(parent)}
-              >
-                <span className={styles.pickerRowGlyph} aria-hidden="true">
+              <button type="button" className={styles.row} onClick={() => setCurrent(parent)}>
+                <span className={styles.rowGlyph} aria-hidden="true">
                   ..
                 </span>
-                <span className={styles.pickerRowName}>subir un nivel</span>
+                <span className={styles.rowName}>subir un nivel</span>
               </button>
             </li>
           )}
@@ -131,21 +132,21 @@ export default function FolderPicker({ root, initialPath, onClose, onOpen }: Fol
             <li key={d.name}>
               <button
                 type="button"
-                className={styles.pickerRow}
+                className={styles.row}
                 onClick={() => setCurrent(joinPath(current, d.name))}
               >
-                <span className={styles.pickerRowGlyph} aria-hidden="true">
+                <span className={styles.rowGlyph} aria-hidden="true">
                   ▸
                 </span>
-                <span className={styles.pickerRowName}>{d.name}</span>
+                <span className={styles.rowName}>{d.name}</span>
               </button>
             </li>
           ))}
         </ul>
 
-        <div className={styles.pickerFooter}>
-          <button type="button" className={styles.pickerOpen} onClick={() => onOpen(current)}>
-            Open this folder
+        <div className={styles.footer}>
+          <button type="button" className={styles.confirm} onClick={() => onOpen(current)}>
+            {confirmLabel}
           </button>
         </div>
       </div>

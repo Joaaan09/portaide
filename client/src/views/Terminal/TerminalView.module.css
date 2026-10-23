@@ -6,6 +6,11 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
+  /* El marco de la app (fixed inset:0) NO se encoge con el teclado del móvil, así
+     que sin esto la barra de teclas queda detrás del teclado. Reservamos abajo el
+     solape del teclado (`--kb-inset`, la publica useKeyboardInset): la columna sube
+     por encima y `.panes` se reajusta solo (ResizeObserver + FitAddon del pane). */
+  padding-bottom: var(--kb-inset, 0px);
 }
 
 /* Título de la vista solo para lectores de pantalla (DESIGN.md §12) */
@@ -287,8 +292,14 @@
   border-top: 1px solid var(--border);
   background: var(--surface);
   /* En modo barra inferior reserva su altura para no quedar tapada; en drawer
-     solo la safe-area (§13b). El fondo --surface rellena esa holgura. */
-  padding-bottom: calc(var(--nav-inset, 0px) + env(safe-area-inset-bottom, 0px));
+     solo la safe-area (§13b). El fondo --surface rellena esa holgura. Con el teclado
+     abierto, `.view` ya sube la columna por encima de él, así que ese hueco de
+     nav/safe-area sobra: se lo descontamos (clamp a 0) para que las teclas queden
+     pegadas justo encima del teclado. */
+  padding-bottom: max(
+    0px,
+    var(--nav-inset, 0px) + env(safe-area-inset-bottom, 0px) - var(--kb-inset, 0px)
+  );
 }
 
 .keybar::-webkit-scrollbar {

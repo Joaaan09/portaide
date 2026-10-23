@@ -1,0 +1,279 @@
+/* Tool-card de preguntas (DESIGN.md §6.5) — mismo esqueleto que Edit/Bash:
+   superficie plana, borde 1px, radio 10px. Cero colores literales. */
+
+.card {
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 11px;
+  border-bottom: 1px solid var(--border);
+}
+
+.icon {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--accent2);
+}
+
+.title {
+  flex: 1;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11.5px;
+  color: var(--text);
+}
+
+.count {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--faint);
+}
+
+/* ---------- Una pregunta ---------- */
+
+.question {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 11px;
+}
+
+.question + .question {
+  border-top: 1px solid var(--border);
+}
+
+/* Rótulo corto del engine ("Auth method", "Approach"…) */
+.chip {
+  align-self: flex-start;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--dim);
+}
+
+.prompt {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--text);
+}
+
+.options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Fila-botón de opción: objetivo táctil cómodo (DESIGN.md §12) */
+.option {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  width: 100%;
+  min-height: 44px;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg);
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.16s ease-out;
+}
+
+.option:active {
+  transform: scale(0.97);
+}
+
+.option:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.optionOn {
+  background: var(--surface2);
+  border-color: var(--accent);
+}
+
+.mark {
+  flex: none;
+  width: 14px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--faint);
+}
+
+.optionOn .mark {
+  color: var(--accent);
+}
+
+.optionBody {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.optionLabel {
+  font-size: 13px;
+  line-height: 17px;
+  color: var(--text);
+}
+
+.optionDesc {
+  font-size: 11.5px;
+  line-height: 16px;
+  color: var(--faint);
+}
+
+/* Respuesta libre: misma caja que el composer (DESIGN.md §6) */
+.other {
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 18px;
+  resize: none;
+}
+
+.other::placeholder {
+  color: var(--faint);
+}
+
+.other:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* ---------- Resumen tras responder ---------- */
+
+.answer {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin: 0;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--faint);
+  animation: answerIn 0.18s ease;
+}
+
+.answerMark {
+  color: var(--green);
+}
+
+.unanswered {
+  color: var(--faint);
+}
+
+/* Descartada: es un rechazo explícito del usuario (DESIGN.md §6.5) */
+.discarded {
+  color: var(--red);
+}
+
+/* Interrumpida: el turno se cortó sin que el usuario decidiera nada */
+.interrupted {
+  color: var(--yellow);
+}
+
+@keyframes answerIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ---------- Pie ---------- */
+
+.actions {
+  display: flex;
+  gap: 8px;
+  padding: 9px 11px;
+  border-top: 1px solid var(--border);
+}
+
+.send,
+.discard {
+  min-height: 44px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.16s ease-out;
+}
+
+.send {
+  flex: 1;
+  border: 0;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.send:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.discard {
+  flex: none;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--dim);
+}
+
+.send:active:not(:disabled),
+.discard:active {
+  transform: scale(0.97);
+}
+
+.send:focus-visible {
+  outline: 2px solid var(--accent2);
+  outline-offset: 2px;
+}
+
+.discard:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .option,
+  .send,
+  .discard {
+    transition: none;
+  }
+
+  .option:active,
+  .send:active:not(:disabled),
+  .discard:active {
+    transform: none;
+  }
+
+  .answer {
+    animation: none;
+  }
+}

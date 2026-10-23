@@ -12,6 +12,9 @@
   display: flex;
   flex-direction: column;
   scrollbar-width: none;
+  /* El scroll anchoring del navegador se sumaría a la compensación manual que
+     hace ChatThread al ampliar la ventana (§6.7) y la volvería no determinista. */
+  overflow-anchor: none;
 }
 
 .thread::-webkit-scrollbar {
@@ -25,6 +28,52 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+
+/* Recibe el foco cuando desaparece el botón de "mostrar anteriores" (para que
+   no caiga al <body>); no es un control, así que no pinta anillo. */
+.list:focus {
+  outline: none;
+}
+
+/* Techo de render (DESIGN.md §6.7): fila-botón que amplía la ventana del hilo.
+   Sin animación de altura ni transición de layout — solo cambia el color. */
+.showEarlier {
+  flex: 0 0 auto;
+  width: 100%;
+  min-height: 44px;
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  line-height: 1.2;
+  color: var(--dim);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.showEarlierIcon {
+  font-size: 9px;
+}
+
+.showEarlier:hover {
+  color: var(--text);
+}
+
+.showEarlier:active {
+  background: var(--surface2);
+}
+
+.showEarlier:focus-visible {
+  outline: 2px solid var(--accent2);
+  outline-offset: 2px;
 }
 
 /* Entrada sutil de cada item; en el primer render coincide con el fadein
@@ -49,6 +98,15 @@
   gap: 6px;
   min-width: 0;
   max-width: 100%;
+}
+
+/* Items revelados al ampliar la ventana (§6.7): entran SIN animación — animar
+   cien elementos a la vez es justo el commit que se quiere barato. Especificidad
+   0,2,0 a propósito: gana a `.userItem/.assistantItem` esté donde esté la regla
+   (también dentro del @media de motion reducido). */
+.userItem.noAnim,
+.assistantItem.noAnim {
+  animation: none;
 }
 
 @keyframes itemIn {
@@ -97,6 +155,11 @@
   color: var(--red);
 }
 
+/* En cola (DESIGN.md §6.4): espera su turno, no es un error → tono neutro */
+.queuedLabel {
+  color: var(--faint);
+}
+
 .undeliveredRetry {
   min-height: 24px;
   padding: 4px 8px;
@@ -120,9 +183,17 @@
   outline-offset: 2px;
 }
 
+/* Cancelar es una acción de DESCARTE: --dim, nunca el acento de la principal
+   (DESIGN.md §6.4). Va después de `.undeliveredRetry` a propósito: misma
+   especificidad, gana la última — si sube, vuelve a pintarse en --accent. */
+.queuedCancel {
+  color: var(--dim);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .userBubblePending,
-  .undeliveredRetry {
+  .undeliveredRetry,
+  .showEarlier {
     transition: none;
   }
 }

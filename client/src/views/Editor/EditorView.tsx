@@ -7,14 +7,23 @@
 //
 // Nota (v1): el split terminal del mockup queda pendiente (no implementado aquí).
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { readFile, writeFile, ApiError } from '../../api/client'
+import {
+  readFile,
+  writeFile,
+  ApiError,
+  isImagePath,
+  fsRawUrl,
+  fsDownloadUrl,
+} from '../../api/client'
 import { useOpenFiles } from '../../openfiles/OpenFilesProvider'
 import CodeArea, { type CodeAreaHandle } from './CodeArea'
 import EditorTabs from './EditorTabs'
 import SymbolBar from './SymbolBar'
 import styles from './EditorView.module.css'
 
-type DocStatus = 'loading' | 'ready' | 'error'
+// 'binary' = archivo no-texto no-imagen (readFile devolvió 415): ni se edita ni
+// se previsualiza, solo se descarga. Las imágenes ni pasan por aquí (§isImagePath).
+type DocStatus = 'loading' | 'ready' | 'error' | 'binary'
 
 /** basename de una ruta POSIX ('/a/b/c.ts' → 'c.ts'). */
 function basename(p: string): string {
@@ -29,6 +38,45 @@ function errText(err: unknown): string {
   if (code === 'not_found') return 'el archivo ya no existe'
   if (code === 'too_large') return 'archivo demasiado grande'
   return 'error de conexión'
+}
+
+/**
+ * Previsualización de imagen (DESIGN.md §7). Carga el archivo crudo vía
+ * /api/fs/raw (la cookie de sesión viaja sola). Spinner mientras carga; si la
+ * imagen no se puede mostrar (muy grande, formato no soportado por el WebView),
+ * cae a un estado sobrio con botón de descarga. Estado propio por `key={path}`.
+ */
+function ImagePreview({ path }: { path: string }) {
+  const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
+  return (
+    <div className={styles.imageStage}>
+      {state === 'error' ? (
+        <div className={styles.overlay}>
+          <p className={styles.overlayText}>no se pudo mostrar la imagen</p>
+          <a className={styles.retry} href={fsDownloadUrl(path)} download>
+            ⤓ Descargar
+          </a>
+        </div>
+      ) : (
+        <>
+          {state === 'loading' && (
+            <div className={styles.overlay}>
+              <span className={styles.spinner} aria-hidden="true" />
+              <p className={styles.overlayText}>cargando {basename(path)}…</p>
+            </div>
+          )}
+          <img
+            className={styles.image}
+            src={fsRawUrl(path)}
+            alt={basename(path)}
+            onLoad={() => setState('ready')}
+            onError={() => setState('error')}
+            style={state === 'loading' ? { visibility: 'hidden' } : undefined}
+          />
+        </>
+      )}
+    </div>
+  )
 }
 
 /** Devuelve el record sin las claves que ya no están abiertas (misma ref si no cambia). */
@@ -103,16 +151,25 @@ export default function EditorView() {
         setStatus((s) => ({ ...s, [path]: 'ready' }))
       })
       .catch((err) => {
+        // Binario no-imagen: no es un error de verdad, es "esto no se edita".
+        // Lo mandamos a su propio estado (panel de descarga), no al de error.
+        if (err instanceof ApiError && err.code === 'binary_file') {
+          setStatus((s) => ({ ...s, [path]: 'binary' }))
+          return
+        }
         setLoadError((e) => ({ ...e, [path]: errText(err) }))
         setStatus((s) => ({ ...s, [path]: 'error' }))
       })
   }, [])
 
-  // Carga perezosa: la primera vez que un archivo se vuelve activo.
+  // Carga perezosa: la primera vez que un archivo se vuelve activo. Las imágenes
+  // NO se leen como texto (readFile las rechazaría con 415): se marcan como
+  // solicitadas y se pintan con <ImagePreview> directamente desde /raw.
   useEffect(() => {
     if (!activePath) return
     if (requestedRef.current.has(activePath)) return
     requestedRef.current.add(activePath)
+    if (isImagePath(activePath)) return
     loadFile(activePath)
   }, [activePath, loadFile])
 
@@ -202,12 +259,15 @@ export default function EditorView() {
   }
 
   const active = activePath
+  const activeIsImage = active ? isImagePath(active) : false
   const activeStatus = active ? status[active] : undefined
   const activeTruncated = active ? !!truncated[active] : false
   const activeDirty = active ? !!dirty[active] : false
   const activeSaving = active ? !!saving[active] : false
   const activeSaveError = active ? saveError[active] : undefined
-  const isLoading = activeStatus === undefined || activeStatus === 'loading'
+  // Las imágenes no pasan por readFile → su status queda undefined; no debe
+  // disparar el overlay de carga del código (lo gestiona <ImagePreview>).
+  const isLoading = !activeIsImage && (activeStatus === undefined || activeStatus === 'loading')
 
   return (
     <main className={styles.view}>
@@ -224,23 +284,34 @@ export default function EditorView() {
       {active && (
         <div className={styles.header}>
           <Breadcrumb path={active} />
-          {!activeTruncated && (
-            <button
-              type="button"
-              className={activeDirty ? `${styles.save} ${styles.saveDirty}` : styles.save}
-              disabled={activeSaving || !activeDirty}
-              onClick={() => saveActive(active)}
-              aria-label="Guardar archivo"
+          {activeIsImage ? (
+            <a
+              className={styles.download}
+              href={fsDownloadUrl(active)}
+              download
+              aria-label={`Descargar ${basename(active)}`}
             >
-              {activeSaving ? (
-                <>
-                  <span className={styles.spinnerSm} aria-hidden="true" />
-                  Guardando…
-                </>
-              ) : (
-                'Guardar'
-              )}
-            </button>
+              ⤓ Descargar
+            </a>
+          ) : (
+            !activeTruncated && (
+              <button
+                type="button"
+                className={activeDirty ? `${styles.save} ${styles.saveDirty}` : styles.save}
+                disabled={activeSaving || !activeDirty}
+                onClick={() => saveActive(active)}
+                aria-label="Guardar archivo"
+              >
+                {activeSaving ? (
+                  <>
+                    <span className={styles.spinnerSm} aria-hidden="true" />
+                    Guardando…
+                  </>
+                ) : (
+                  'Guardar'
+                )}
+              </button>
+            )
           )}
         </div>
       )}
@@ -262,7 +333,8 @@ export default function EditorView() {
         role="tabpanel"
         aria-label={active ? `Editando ${basename(active)}` : 'Editor'}
       >
-        {active && activeStatus === 'ready' && (
+        {active && activeIsImage && <ImagePreview key={active} path={active} />}
+        {active && !activeIsImage && activeStatus === 'ready' && (
           <CodeArea
             key={active}
             path={active}
@@ -272,6 +344,22 @@ export default function EditorView() {
             onSave={() => saveActive(active)}
             registerHandle={registerHandle}
           />
+        )}
+        {active && activeStatus === 'binary' && (
+          <div className={styles.overlay}>
+            <span className={styles.binaryGlyph} aria-hidden="true">
+              ▢
+            </span>
+            <p className={styles.overlayText}>archivo binario · no se puede editar</p>
+            <a
+              className={styles.retry}
+              href={fsDownloadUrl(active)}
+              download
+              aria-label={`Descargar ${basename(active)}`}
+            >
+              ⤓ Descargar
+            </a>
+          </div>
         )}
         {active && isLoading && (
           <div className={styles.overlay}>
@@ -285,6 +373,14 @@ export default function EditorView() {
             <button type="button" className={styles.retry} onClick={() => loadFile(active)}>
               Reintentar
             </button>
+            <a
+              className={styles.retry}
+              href={fsDownloadUrl(active)}
+              download
+              aria-label={`Descargar ${basename(active)}`}
+            >
+              ⤓ Descargar
+            </a>
           </div>
         )}
       </div>

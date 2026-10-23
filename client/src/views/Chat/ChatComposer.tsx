@@ -1,5 +1,6 @@
 // ChatComposer — input del chat, fijo al pie de la vista (DESIGN.md §6): chip de
-// contexto (carpeta del workspace), textarea autoexpandible 1→4 líneas, botón ↑
+// contexto (el PROYECTO de la conversación: su carpeta; editable mientras el
+// hilo esté vacío), textarea autoexpandible 1→4 líneas, botón ↑
 // (o ■ para interrumpir mientras streamea) y un PANEL desplegable de controles
 // (modelo real + permission mode con Plan + slider de esfuerzo), cableados al
 // puente. El panel se colapsa para mantener el pie limpio a una mano en móvil;
@@ -37,8 +38,15 @@ interface ChatComposerProps {
   onEffortChange: (effort: ChatEffortSetting) => void
   streaming: boolean
   onInterrupt: () => void
-  /** Nombre de la carpeta de trabajo activa (chip de contexto). */
-  contextLabel?: string
+  /** Etiqueta del chip: carpeta del proyecto de la conversación (corta, mono). */
+  cwdLabel: string
+  /** Ruta absoluta de esa carpeta (tooltip); null mientras se resuelve. */
+  cwdPath: string | null
+  /**
+   * Abre el selector de carpeta. Ausente = conversación ya iniciada: el chip es
+   * estático (el proyecto queda congelado, ver `isChatStarted`).
+   */
+  onChangeCwd?: () => void
 }
 
 export default function ChatComposer({
@@ -53,12 +61,19 @@ export default function ChatComposer({
   onEffortChange,
   streaming,
   onInterrupt,
-  contextLabel,
+  cwdLabel,
+  cwdPath,
+  onChangeCwd,
 }: ChatComposerProps) {
   const [text, setText] = useState('')
   const [controlsOpen, setControlsOpen] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const canSend = text.trim().length > 0 && !streaming
+  // El composer NUNCA se bloquea (DESIGN.md §6.4): escribir con un turno vivo
+  // le mete el mensaje al agente EN CALIENTE (lo atiende sobre la marcha, sin
+  // esperar a terminar), como en Claude Code. El botón hace una sola cosa a la
+  // vez: enviar si hay texto, detener si el campo está vacío y hay trabajo.
+  const canSend = text.trim().length > 0
+  const showStop = streaming && !canSend
 
   // Etiquetas del resumen (visible con el panel cerrado)
   const modelLabel = modelOptions.find((o) => o.value === model)?.label ?? 'Por defecto'
@@ -103,13 +118,55 @@ export default function ChatComposer({
   const keepFocus = (event: PointerEvent) => event.preventDefault()
 
   return (
-    <form className={styles.composer} onSubmit={handleSubmit}>
-      {/* Chip de contexto: la carpeta de trabajo activa (cwd del turno) */}
+    // `data-ptr="off"`: el composer queda fuera del pull-to-refresh de la PWA
+    // (DESIGN.md §6.7). Es la zona que más se toca y no scrollea, así que un
+    // arrastre hacia abajo aquí recargaba la app en mitad de una conversación.
+    <form className={styles.composer} data-ptr="off" onSubmit={handleSubmit}>
+      {/* Chip de contexto: el PROYECTO de esta conversación (su cwd). Mientras el
+          hilo esté vacío es un botón que abre el selector de carpeta; en cuanto
+          arranca queda fijo (candado) — ver DESIGN.md §6.6. */}
       <div className={styles.chips}>
-        <span className={styles.chip}>
-          <span className={styles.chipAt}>@</span>
-          {contextLabel || 'workspace'}
-        </span>
+        {onChangeCwd ? (
+          <button
+            type="button"
+            className={`${styles.chip} ${styles.chipButton}`}
+            onClick={onChangeCwd}
+            title={cwdPath ? `Proyecto: ${cwdPath} — toca para cambiar` : 'Elegir carpeta del proyecto'}
+            aria-label={`Proyecto ${cwdLabel}. Cambiar carpeta`}
+          >
+            <span className={styles.chipAt} aria-hidden="true">
+              @
+            </span>
+            <span className={styles.chipName}>
+              <bdi>{cwdLabel}</bdi>
+            </span>
+            <span className={styles.chipCaret} aria-hidden="true">
+              ⌄
+            </span>
+          </button>
+        ) : (
+          <span
+            className={styles.chip}
+            title={
+              cwdPath
+                ? `Proyecto: ${cwdPath} — fijo desde el primer mensaje`
+                : 'Proyecto de la conversación'
+            }
+          >
+            <span className={styles.chipAt} aria-hidden="true">
+              @
+            </span>
+            <span className={styles.chipName}>
+              <bdi>{cwdLabel}</bdi>
+            </span>
+            <span className={styles.chipLock} aria-hidden="true">
+              <svg viewBox="0 0 12 12" width="9" height="9" fill="none" stroke="currentColor" strokeWidth="1.3">
+                <rect x="2.2" y="5.2" width="7.6" height="5.3" rx="1.2" />
+                <path d="M4 5.2V3.9a2 2 0 0 1 4 0v1.3" />
+              </svg>
+            </span>
+          </span>
+        )}
       </div>
 
       <div className={styles.box}>
@@ -122,13 +179,13 @@ export default function ChatComposer({
             resize()
           }}
           onKeyDown={handleKeyDown}
-          placeholder="Ask Claude to build, fix, refactor…"
+          placeholder={streaming ? 'Escribe sin esperar…' : 'Ask Claude to build, fix, refactor…'}
           aria-label="Mensaje para Claude Code"
           rows={1}
           enterKeyHint="send"
           autoComplete="off"
         />
-        {streaming ? (
+        {showStop ? (
           <button
             type="button"
             className={styles.stop}

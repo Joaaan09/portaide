@@ -22,8 +22,13 @@ export interface DiffLine {
   text: string
 }
 
-/** Estado de una edición propuesta: pendiente de decisión o ya resuelta */
-export type EditDecision = 'pending' | 'applied' | 'rejected' | 'auto'
+/**
+ * Estado de una edición/tool propuesta: pendiente de decisión o ya resuelta.
+ * 'interrupted' = se cerró sin decisión del usuario (turno abortado, o un
+ * mensaje nuevo que cortó el paso en curso). NO es un rechazo: decir "Rejected"
+ * de algo que el usuario no rechazó sería mentirle.
+ */
+export type EditDecision = 'pending' | 'applied' | 'rejected' | 'auto' | 'interrupted'
 
 /** Decisiones que puede tomar el usuario desde la card (auto la pone el sistema) */
 export type UserEditDecision = Extract<EditDecision, 'applied' | 'rejected'>
@@ -87,6 +92,37 @@ export interface GenericToolBlock {
   ok?: boolean
 }
 
+/** Una opción de respuesta de una pregunta de Claude (`AskUserQuestion`) */
+export interface QuestionOption {
+  label: string
+  description?: string
+}
+
+/** Una pregunta de Claude: rótulo corto, enunciado, opciones y si admite varias */
+export interface ChatQuestion {
+  question: string
+  header: string
+  multiSelect: boolean
+  options: QuestionOption[]
+}
+
+/**
+ * Tool-card de preguntas (`AskUserQuestion`, DESIGN.md §6.5): de 1 a 4 preguntas
+ * con opciones. NO es un Approve/Reject: hay que ELEGIR y devolver las
+ * respuestas, así que tiene su propia card.
+ */
+export interface QuestionToolBlock {
+  type: 'question'
+  /** id del tool_use (casa el question_request y el tool_result) */
+  id: string
+  /** requestId de la pregunta pendiente; presente ⇒ se puede responder */
+  requestId?: string
+  questions: ChatQuestion[]
+  /** Respuestas enviadas (enunciado → respuesta); presente una vez resuelta */
+  answers?: Record<string, string>
+  decision: EditDecision
+}
+
 /** Texto plano del asistente (markdown-plano por ahora) */
 export interface TextBlock {
   type: 'text'
@@ -100,6 +136,7 @@ export type AssistantBlock =
   | EditToolBlock
   | BashToolBlock
   | GenericToolBlock
+  | QuestionToolBlock
   | TextBlock
 
 /** Bloques de tool con estado de aprobación (Edit / Bash / genérico) */
@@ -112,12 +149,13 @@ export interface UserChatItem {
   id: string
   text: string
   /**
-   * Estado de ENTREGA (solo local; el hilo del server no lo tiene):
-   * 'sending' = enviado, aún sin confirmar por el server · 'failed' = no
-   * entregado tras los reintentos (la UI ofrece reintentar). Sin valor = está
-   * en el log autoritativo del server.
+   * Estado de ENTREGA (el hilo del server no lo tiene):
+   * 'sending' = enviado, aún sin confirmar por el server · 'queued' = el server
+   * lo tiene EN COLA (Claude sigue con el mensaje anterior; se puede cancelar) ·
+   * 'failed' = no entregado tras los reintentos (la UI ofrece reintentar).
+   * Sin valor = está en el log autoritativo del server.
    */
-  delivery?: 'sending' | 'failed'
+  delivery?: 'sending' | 'queued' | 'failed'
 }
 
 /** Mensaje del asistente (cabecerita "Claude Code" + bloques) */
@@ -140,6 +178,14 @@ export interface ChatSession {
   items: ChatItem[]
   /** session_id de Claude para reanudar (`resume`); null hasta el 1er turno. */
   claudeSessionId?: string
+  /**
+   * Carpeta del proyecto al que pertenece la conversación (ancla; es el `cwd` de
+   * sus turnos). `null`/ausente = aún sin anclar: la conversación no ha empezado
+   * y hereda el workspace activo, que es lo que muestra el chip del composer.
+   * Una vez arranca el hilo, el ancla queda FIJA (el engine indexa sus
+   * transcripts por proyecto: moverla partiría el historial y el `resume`).
+   */
+  cwd?: string | null
   /** true mientras un turno de ESTA conversación está en curso (o en cola). */
   streaming?: boolean
   /** nº de mensajes en cola (escritos mientras trabajaba); 0/undefined = ninguno. */

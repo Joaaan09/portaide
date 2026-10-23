@@ -229,6 +229,44 @@
   outline-offset: 2px;
 }
 
+/* Botón de descarga en la cabecera (imágenes). Mismo molde que .save pero
+   neutro y siempre activo; es un <a download>, no dispara guardado. */
+.download {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface2);
+  color: var(--dim);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11.5px;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    transform 0.16s ease-out,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.download:hover,
+.download:focus-visible {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.download:active {
+  transform: scale(0.97);
+}
+
+.download:focus-visible {
+  outline: 2px solid var(--accent2);
+  outline-offset: 2px;
+}
+
 /* Spinner pequeño para el botón de guardar */
 .spinnerSm {
   width: 11px;
@@ -275,6 +313,49 @@
 .cmHost {
   position: absolute;
   inset: 0;
+}
+
+/* ---------- Previsualización de imagen (DESIGN.md §7) ---------- */
+
+/* Escenario de la imagen: ocupa el stage, centra y encuadra con un fondo de
+   damero sutil para distinguir transparencias (PNG/SVG) del fondo de la app. */
+.imageStage {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  overflow: auto;
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(45deg, var(--surface) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--surface) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--surface) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--surface) 75%);
+  background-size: 18px 18px;
+  background-position:
+    0 0,
+    0 9px,
+    9px -9px,
+    -9px 0;
+}
+
+/* La imagen nunca desborda el stage; conserva proporción. */
+.image {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 6px;
+  /* Separa la imagen del damero sin pintar un borde duro */
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+/* Glifo del estado "archivo binario" */
+.binaryGlyph {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 30px;
+  color: var(--faint);
 }
 
 /* Overlay sobrio de estado (carga / error) */
@@ -419,12 +500,14 @@
 @media (prefers-reduced-motion: reduce) {
   .tabClose,
   .save,
+  .download,
   .retry,
   .symkey {
     transition: none;
   }
 
   .save:active,
+  .download:active,
   .retry:active {
     transform: none;
   }

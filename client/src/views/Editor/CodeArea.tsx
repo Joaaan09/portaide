@@ -124,6 +124,11 @@ export default function CodeArea({
     return () => {
       observer.disconnect()
       registerHandle(null)
+      // iOS/WebKit: destruir un `contenteditable` ENFOCADO con el teclado virtual
+      // subido puede colgar el renderer al navegar (la app "se recarga" y a veces
+      // te saca del standalone del PWA). Desenfocar antes de destruir cierra el
+      // teclado de forma ordenada y quita el foco del nodo que se va a eliminar.
+      if (view.hasFocus) view.contentDOM.blur()
       view.destroy()
     }
     // Montaje único por archivo: initialDoc/path/editable se capturan al montar;

@@ -18,7 +18,7 @@
   margin-bottom: 7px;
 }
 
-/* Chip de archivo: mono (es una ruta, DESIGN.md §2) */
+/* Chip de proyecto: mono (es una ruta, DESIGN.md §2) */
 .chip {
   display: flex;
   align-items: center;
@@ -30,10 +30,60 @@
   font-family: 'JetBrains Mono', monospace;
   font-size: 10px;
   color: var(--dim);
+  /* La ruta no puede empujar la fila: se trunca dentro del chip. */
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* Variante interactiva: conversación sin estrenar → abre el selector de carpeta */
+.chipButton {
+  /* Objetivo táctil cómodo sin engordar la fila: el área crece con el padding
+     vertical y se compensa con el margen (DESIGN.md §11, uso a una mano). */
+  padding-block: 7px;
+  margin-block: -4px;
+  cursor: pointer;
+  transition:
+    border-color 0.14s ease,
+    color 0.14s ease;
+}
+
+.chipButton:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.chipButton:focus-visible {
+  outline: 2px solid var(--accent2);
+  outline-offset: 2px;
 }
 
 .chipAt {
+  flex: none;
   color: var(--accent);
+}
+
+/* Ruta del proyecto: se trunca por delante para conservar el final (…/portaide) */
+.chipName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+
+.chipCaret {
+  flex: none;
+  color: var(--faint);
+  font-size: 9px;
+  line-height: 1;
+}
+
+/* Candado: el proyecto quedó fijo al arrancar el hilo (no es un botón) */
+.chipLock {
+  flex: none;
+  display: flex;
+  color: var(--faint);
 }
 
 /* Chip "+ context": sans y --faint, como el mockup */

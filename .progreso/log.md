@@ -4,6 +4,57 @@
 
 ---
 
+2026-08-04 (**Source Control: git desde la UI**) — Petición: commit/push/pull sin terminal. **Modo Directo**
+(autorizado tras el protocolo del botón rojo). Se escribió **DESIGN §8.1** antes de tocar código. Backend
+nuevo `server/src/git/` (`service.ts` sobre el binario `git` con `execFile` + `--porcelain=v2 -z`;
+`routes.ts` con 8 endpoints bajo el gate de auth) y cliente `api/git.ts` + `useGitStatus` + **panel
+`SourceControl`** (hoja inferior) + **chip de rama** en Files + **marcas M/A/?/D** en el árbol. Token de
+GitHub (`GITHUB_TOKEN`, ya puesto por el usuario en `.env`) inyectado por env a un *credential helper*
+efímero — nunca en argv, en `.git/config` ni al cliente. Alcance sin nada destructivo (`pull --ff-only`,
+sin force/reset/stash/conflictos). **Verificado:** typecheck + build verdes, **39 pruebas reales** del
+módulo (incluido un `fetch` autenticado real contra GitHub) y **19 smoke HTTP** contra el server levantado.
+**Sin commit ni deploy.** ADR en `decisiones.md`.
+
+2026-08-06 (**Chat: techo de render del hilo — la PWA se reiniciaba al volver a la vista**) — Síntoma:
+"estoy en Chat, cambio de pestaña, vuelvo y la app peta / se reinicia" (splash) en el iPhone. Causa medida
+contra `data/portaide.db`: `AppShell` remonta la vista (`key={view}`) y el hilo se pintaba **sin techo** —
+la conversación mayor son 3.673 eventos → **~46.000 nodos DOM** reconstruidos de golpe, y el WebView de iOS
+muere. **Ecosistema de subagentes autorizado** (2 ejecutores + revisor). Escrito **DESIGN §6.7** antes del
+código: **ventana de 120 bloques** (presupuesto DURO, recortando el primer item por su cola — un turno
+entero es UN item, hay uno de **576 bloques**), botón `▲ Mostrar mensajes anteriores` (+120, conserva la
+posición de lectura, sin animar la entrada), **techo por card** (diff 24 líneas, bash 16, `⋯ N líneas más`),
+`AssistantMessage` memoizado, ventana **congelada mientras lees**, reset del presupuesto **en fase de
+render** y el hilo + composer **fuera del pull-to-refresh** (`data-ptr="off"`; arrastrar hacia abajo en el
+hilo recargaba la app: segunda vía al mismo síntoma). El `revisor` **rechazó la 1ª entrega** con un crítico
+correcto: la ventana contaba **por mensajes** y no acotaba nada, y la medición que la avalaba era **falsa**
+(el script troceaba los items en `assistant_done`, que NO cierra el item). Corregido y re-medido con la
+`threadWindow` **extraída del propio archivo**: **120 bloques exactos**, **46.047 → 2.538 nodos** (18×).
+`typecheck` + `build` verdes. **Sin commit ni deploy.** ADR en `decisiones.md`, flecos en `bugs.md`.
+
+2026-08-04 (**Chat: ancla de proyecto por conversación**) — El usuario pidió que el chat diga **a qué
+proyecto pertenece** y poder cambiar la carpeta desde ahí, **solo en conversaciones no iniciadas**. El chip
+`@…` mostraba el workspace global y el `cwd` viajaba por mensaje: cambiar de carpeta en Files movía de
+proyecto todos los chats, también los que ya tenían hilo. Ahora el `cwd` es de la conversación: lo fija el
+**primer turno** en el servidor (`SessionRuntime`, que después ignora el `cwd` de los mensajes y lo publica
+en el `snapshot`), se persiste en SQLite (`PATCH cwd` validado con el nuevo `resolveDirSafe`) y el chip lo
+pinta — como **botón** que abre el `FolderPicker` mientras el hilo está vacío, con **candado** en cuanto
+arranca. `FolderPicker` extraído a `components/`. DESIGN.md §6.6 + ADR del 2026-08-04. Verificado con
+pruebas reales contra SQLite y contra el `SessionRuntime` (puente stubbeado). Sin commit ni deploy.
+
+---
+
+2026-08-01 (**análisis del borde de seguridad · sin tocar código**) — El usuario preguntó si necesita la VPN
+de Tailscale en el iPhone para usar PortaIDE. Respuesta: **no** — se confirmó (entra por datos móviles y desde
+un iPad sin Tailscale, con URL pública + login) que el **modelo de acceso real es PÚBLICO + TLS(NPM) + auth**,
+no Tailscale (que nunca se cableó como borde). Análisis en modo lectura del borde: la **auth de código está
+bien** (cookie httpOnly+Secure+SameSite, bcrypt en tiempo constante, rate-limit en login, gate `requireAuth`,
+upgrade de WS validado antes de abrir el socket). Los **riesgos son de postura**: un solo factor guardando un
+shell completo del VPS con `bypassPermissions` (sin 2FA), contraseña débil pendiente, y dos ítems del host sin
+verificar desde el repo (**UFW cerrando el 4100** y **Force-SSL en NPM**). Anotado como ADR en decisiones.md.
+Recomendación: seguir en público pero endurecer (contraseña fuerte + 2FA/Cloudflare Access + UFW + Force-SSL).
+
+---
+
 2026-07-26 (8ª sesión · **trabajo en 2º plano de verdad: terminal persistente + cliente a prueba de móvil +
 push**) — El usuario reportó que al bloquear el móvil o salir de la app "se ve que ha parado", y pidió además
 varias pestañas de consola con sesiones de Claude simultáneas y notificaciones push. **Con arnés de subagentes
@@ -337,3 +388,179 @@ SQLite vía upsert y hace `attach` → repinta y reanuda con `resume`; `fetchHis
 (+ CSS): panel en 2 secciones **PortaIDE** / **En el servidor · Claude Code**, dedup por
 id+claudeSessionId. Sin tocar el backend. Typecheck + build verdes. Sin commit ni deploy (falta QA en
 dispositivo tras desplegar en el host).
+
+## 2026-08-01 — Fix: barra de teclas del Terminal tapada por el teclado del móvil
+
+El usuario, en Terminal, no veía la `KeyBar` (esc/ctrl/…) al escribir: quedaba **detrás del teclado del
+sistema**. Causa: el marco (`AppShell .shell`, `position: fixed; inset: 0`) no se encoge al abrir el
+teclado (decisión deliberada del shell), así que el teclado tapa el borde inferior donde vive la barra.
+Fix en **Modo Directo** (scoped al Terminal, sin tocar la shell global): nuevo hook `useKeyboardInset`
+(`client/src/hooks/`) que publica `--kb-inset` en `<html>` con el solape del teclado vía
+`window.visualViewport` (rAF + umbral 80px; no-op si no hay soporte). La vista Terminal lo consume:
+`.view` reserva `padding-bottom: var(--kb-inset)` (sube la columna; `.panes` reajusta solo por el
+`ResizeObserver`+`FitAddon` ya presentes) y la `.keybar` descuenta ese solape de su holgura nav/safe-area
+(`max(0, nav+safe - kb)`). Token `--kb-inset: 0px` añadido a `tokens.css`. Descartado
+`interactive-widget=resizes-content` (Safari iOS no lo soporta). Detalle y alternativas en ADR 2026-08-01
+de `decisiones.md`. Typecheck + build verdes. **Sin commit ni deploy** (falta QA en dispositivo).
+
+## 2026-08-01 — Fix: backspace mantenido no se repite en el Terminal (iOS)
+
+El usuario, en Terminal, al mantener pulsado el borrado del teclado del iPhone, borraba de uno en uno en
+vez de repetir. Causa: iOS **no emite `keydown` repetidos** para el teclado virtual (a diferencia del
+escritorio); el primer toque sí llega y xterm borra un carácter, pero la pulsación mantenida se queda
+muda (el auto-repeat nativo de iOS solo actúa sobre contenido editable real, y el textarea de xterm está
+vacío). Fix en **Modo Directo** (`TerminalPane.tsx` + `keys.ts`): helper `attachBackspaceRepeat` sobre
+`term.textarea` — al primer `keydown` de Backspace (xterm ya borró ese carácter) programa, tras 400ms, el
+reenvío de `DEL` (`\x7f`) cada 55ms hasta `keyup`; con tope de 500 por si se pierde el keyup. **Solo en
+puntero grueso** (móvil) y **solo si `event.repeat` es falso** (no duplica la repetición nativa de
+escritorio/teclado físico). Listeners en fase de captura para no depender del orden con xterm. Constante
+`SEQ.del` añadida. Detalle en ADR 2026-08-01. Typecheck + build verdes. **Sin commit ni deploy** (falta
+QA en iPhone: confirmar que iOS sí emite el `keydown`/`keyup` inicial de Backspace, en lo que se apoya).
+
+## 2026-08-04 — Chat: escribir sin esperar (cola visible) + preguntas de Claude con opciones
+
+Dos peticiones, ambas en **Modo Directo** (el usuario autorizó solo el subagente `revisor` al cierre).
+
+**(1) Cola.** El server ya encolaba desde la 8ª sesión; el bloqueo era de UI. Ahora el composer nunca se
+bloquea (`↑` si hay texto, `■` solo con el campo vacío y turno vivo) y la cola la manda el **server** en
+`snapshot`/`status` (`queue:[{localId,text}]`), así que las burbujas "⏳ En cola" sobreviven a recargar la
+PWA y se pueden **cancelar** (verbo `cancel` → `SessionRuntime.cancelQueued`, solo lo que no ha arrancado).
+
+**(2) Preguntas (`AskUserQuestion`).** Verificado contra el SDK real: esa tool **sí** pasa por `canUseTool`
+incluso en `bypassPermissions`, y se responde con `updatedInput.answers` (`{enunciado: respuesta}`;
+multiSelect separado por ", "; admite texto libre). El Approve genérico aprobaba **sin** respuestas — por
+eso el agente volvía a preguntar. Nuevos: evento `question_request`, verbo `answer`, `resolveQuestion` en
+bridge/runtime y **`QuestionCard`** en el cliente (selección única/múltiple, 1–4 preguntas apiladas, "Otro…"
+con texto libre, envío deshabilitado hasta responderlas todas). DESIGN.md §6.4 y §6.5 escritos ANTES de
+implementar. De paso, las resoluciones entran al log: aprobar/responder y recargar ya no repinta la card
+como pendiente.
+
+Verificado: typecheck + build verdes, y **tres pruebas reales contra el engine** (sondas del SDK, puente
+compilado respondiendo 2 preguntas single+multi, y runtime encolando/cancelando: el cancelado nunca se
+ejecutó). **Sin commit ni deploy**; falta QA en el iPhone.
+
+**Revisión (mismo día).** El `revisor` (autorizado por el usuario) encontró 2 altos reales y varios medios;
+corregidos y re-verificados con sondas: (1) interrumpir con una pregunta viva no dejaba resolución en el
+log — el deny del listener de `abort` no emitía nada, así que la card volvía accionable y responder era un
+no-op mientras la UI decía "✓ respondida" → se emite, más `closeOrphanRequests()` al resucitar la sesión
+desde SQLite; (2) `stop()` sin turno vivo no reemitía `status` (cola fantasma con Cancelar inútil);
+(3) `cancelQueued` cancela también lo que espera slot y deja lápida contra el reenvío at-least-once;
+(4) `markQuestion` reemplaza una card genérica en vez de dejarla muerta; (5) `status` sin `queue` ya no
+borra la cola pintada; (6) `pendingPerm` se limpia al cerrar pestaña; (7) a11y: `role="group"` +
+`aria-pressed` en vez de un `radiogroup` sin flechas; (8) CSS alineado a DESIGN §6.4/§6.5. Lo no arreglado
+(slot retenido por una pregunta sin responder, entre otros) queda en `bugs.md`. Build verde.
+
+**Corrección de rumbo (mismo día): entrega EN CALIENTE.** La cola dejaba el mensaje esperando a que
+terminase el turno anterior; lo pedido era lo de Claude Code (que entre mientras trabaja). Rehecho sobre
+el **streaming input** del SDK: `query({prompt: AsyncIterable<SDKUserMessage>})`, `ChatTurn.push()` +
+`endInput()`, y `SessionRuntime.deliverLive()` antes de encolar (la burbuja entra al log al empujar, por
+eso se ve intercalada en el trabajo). **Hallazgo crítico medido:** sin `priority: 'now'` el CLI consume el
+mensaje y lo DESCARTA — con `next` o sin campo el agente terminó su tarea sin enterarse. Verificado
+también que el texto llega (código `XK-7742` inyectado a mitad y escrito al final), que `resume` y `stop`
+siguen bien, y que los mensajes encadenados reutilizan la misma query sin relanzar `claude` (2.7 s vs ~5 s).
+La cola queda solo para lo no entregable (turno esperando slot, u otro modelo/esfuerzo). Build verde.
+
+**Revisión #2 (streaming input).** Dos altos reproducidos por el `revisor`, corregidos y re-verificados con
+sondas: (a) cerrar el canal contando `result`s era un supuesto FALSO —el CLI funde en un turno los mensajes
+que llegan juntos—, así que el turno retenía su slot y el proceso `claude` **30 s** de más (typing puesto,
+push tardío); ahora el cierre depende de que el CLI haya **recogido del canal** (`pending()===0`) y el
+margen baja a 3 s → medido idle a **0,4 s** del último evento; (b) escribir con una card de permiso o una
+pregunta abierta las marcaba **"✕ Rejected"** sin que el usuario rechazara nada → `reason:'user'|'interrupted'`
+y **⚠ Interrumpido** en `--yellow`. Además: `onDropped` avisa en el hilo si un mensaje inyectado muere con
+el turno; el **permissionMode** entra en `compatibleWithTurn` (podía ejecutar con bypass algo recién puesto
+en Ask, §11); `setModel`/`setPermissionMode` sincronizan el estado del turno; el hilo no pinta tramos de
+asistente vacíos; `feedNextOrClose` saca de la cola antes de difundir; `startTurn` no arranca durante el
+shutdown. DESIGN §6.4/§6.5 actualizados (incl. que inyectar CORTA la tool en vuelo). Build verde.
+
+## 2026-08-05 — Incidente de despliegue: la entrega en caliente estaba escrita pero NO corriendo
+
+**Síntoma del usuario:** "cuando mando un mensaje mientras me está respondiendo, no se tiene en cuenta al
+momento; me lo responde cuando termina con el mensaje previo".
+
+**No era un bug de código.** El backend del host (`systemd portaide-backend`) llevaba vivo desde el
+**1-ago 18:04**, ejecutando en memoria el código de `HEAD` (`23419bd`), que encola:
+`const busy = this.turn !== null || this.accepted.size > 0; if (busy) { this.queue.push(msg) }`.
+La entrega en caliente (12ª sesión, 4-ago) estaba en el árbol y hasta **compilada en `dist/`** (4-ago
+17:14), pero **el servicio nunca se reinició**. El frontend sí se había reconstruido (4-ago 20:09), así
+que el sistema corría con **cliente nuevo contra backend viejo**: el composer dejaba escribir y enviar
+(sin bloqueo) y el servidor lo metía en cola — exactamente el síntoma descrito.
+
+**Acción:** `npm run typecheck` (verde) → `npm run build` en `server/` → reinicio del servicio. Sin sudo
+disponible en la sesión, el reinicio se hizo con `kill -TERM` al PID (el unit corre como `kuoyii` con
+`Restart=always`, 2 s): systemd lo relanzó (`NRestarts=1`, PID 3982645, `/api/health` 200).
+
+**Verificado con sonda real contra el bridge compilado** (`dist/chat/bridge.js`): turno largo de 12 pasos
+Bash, `push()` a los 8 s → el agente **abandona la tarea y responde a los 15,1 s tras 1 de 12 pasos**,
+reutilizando la misma query (mismo `session_id`, sin `resume`). Primera sonda descartada: el sandbox del
+CLI **bloquea `sleep 25 && echo …`**, así que el turno acababa a los 6 s y no medía nada — anotado por si
+se reusa el patrón.
+
+**Lección operativa:** `scripts/deploy.sh` **sí** hace build + `systemctl restart` + rebuild del frontend.
+Lo que falló fue saltárselo: un `docker compose up -d --build` solo toca el frontend, y un `npm run build`
+suelto deja el `dist/` nuevo con el proceso viejo en memoria. **Desplegar siempre con `scripts/deploy.sh`**;
+si se hace a mano, el `systemctl restart portaide-backend` no es opcional.
+
+## 2026-08-05 — Preguntas de Claude (`AskUserQuestion`): la card estaba muerta por la misma desalineación
+
+**Síntoma del usuario:** "las preguntas que me hace Claude no tengo manera de responderlas".
+
+**Causa: la misma raíz que la entrada anterior de hoy** (cliente nuevo, backend viejo), vista desde otro
+síntoma. El frontend desplegado (4-ago 15:16) ya tenía `QuestionCard`, pero el backend en memoria no emitía
+`question_request` ni entendía el verbo `answer`; sin `requestId` la card cae al modo lectura
+(`QuestionCard.tsx:45`) y se pinta **"Sin responder", sin botones**. Detalle a recordar: `markPending` (el
+del `permission_request` genérico) **no** rehabilita un bloque `question`, así que un backend que mande el
+permiso en vez de la pregunta deja igualmente la card muerta.
+
+**Pista falsa que costó descartar:** el journal repite
+`[CLAUDE_SDK_CAN_USE_TOOL_SHADOWED] canUseTool will not be invoked: permissionMode 'bypassPermissions'…
+use a PreToolUse hook instead`. Es genérico y **NO aplica a `AskUserQuestion`**: sonda contra el SDK
+**0.3.198** → la tool sí invoca `canUseTool` en bypass y se responde con `updatedInput.answers`
+(`tool_result: "Your questions have been answered…"`). El puente no necesita hooks.
+
+**Acción:** build de server y client + **rebuild del frontend** (`docker compose up -d --build frontend`).
+El reinicio del backend ya lo había hecho la sesión paralela (PID 3982645, 22:51). Con esto el bundle
+servido incluye también el trabajo de las sesiones 13 y 14 (chip `@carpeta`, panel Source Control).
+
+**Verificado end-to-end por el camino real de la app:** login HTTP → `ws://…/ws/chat` → `attach` +
+`message` que fuerza la tool → `question_request` con sus opciones → **`answer`** → `question_answered` →
+`tool_result ok` → `result success`. Más smoke autenticado (`/api/chat/sessions` 200, `/api/git/status` con
+`tokenPresent: true`). La sesión de prueba se borró de SQLite; quedaron 3 transcripts de sonda en
+`~/.claude/projects/` que el classifier no dejó borrar.
+
+## 2026-08-05 — Fix: la entrega en caliente MORÍA al cerrar el canal (bug real, no solo despliegue)
+
+Al verificar el reinicio anterior por el **camino de producción** (y no con el bridge suelto) apareció un
+bug de verdad. Mecánica medida contra el CLI: al empujar con `priority:'now'`, el CLI **corta el paso en
+curso y emite un `result`** que es el del turno CORTADO, no el del mensaje nuevo. `SessionRuntime.onEmit`
+reacciona a ese `result` con `feedNextOrClose()` → `endInput()` → `closeInput()` cerraba el canal **justo
+cuando el agente iba a atender la inyección**. Dos de dos sondas: mensaje pospuesto al final de la tarea
+(43,6 s) o **perdido en silencio** —ni siquiera por `onDropped`, porque el CLI ya lo había recogido del
+canal—. Explica el síntoma del usuario incluso con el código nuevo corriendo.
+
+**Fix en `bridge.ts`:** `injectedLive` (+ `resultsSincePush`). Mientras hay una inyección sin atender,
+`closeInput()` aplaza con `INJECTED_GRACE_MS` = 20 s en vez de cerrar (tras el corte el CLI puede callarse
+>10 s). El **1er** `result` tras el push no levanta el bloqueo (es el del corte); del **2º** en adelante sí,
+y el cierre vuelve al camino rápido, así que el slot se sigue liberando en ~0,5 s. El flag se actualiza
+ANTES del `send` porque el runtime llama a `endInput()` de forma síncrona. Turnos sin inyección: idénticos.
+
+**Sondas (4, contra el engine real, con `endInput()` en cada `result` como hace el runtime):** sin fix 2/2
+mal; con fix el mensaje entra siempre y, con una orden real de parar a mitad, el agente **acusa 1,6 s
+después del envío y corta en el paso 2 de 12** (turno cerrado 0,6 s más tarde). Matiz anotado: ante un
+«ignora lo anterior» el modelo a veces prefiere terminar lo que estaba haciendo — decisión del modelo, no
+retraso del transporte. Build verde; backend reiniciado (PID 3998591, health 200).
+
+## 2026-10-23 — FS: ver imágenes inline + descargar archivos y carpetas (zip)
+
+Modo Directo (botón rojo → "No"). Pedido: ver/descargar imágenes y descargar carpetas enteras.
+
+Backend (`fs/routes.ts`): `GET /api/fs/raw` (archivo crudo en streaming, MIME por extensión, inline +
+nosniff, tope inline 25 MB → 413) y `GET /api/fs/download` (attachment: archivo tal cual o **carpeta → zip**
+al vuelo con `archiver`, streaming sin tope, Content-Disposition RFC 5987). Ambos bajo `requireAuth` y por
+`resolveSafe` (traversal → 400). Dep nueva `archiver@^7` + `@types/archiver@^6` (el 8 rompe el default
+import); zip, no tar.gz, porque el host no tiene `zip` y por iOS. Cliente: `isImagePath/fsRawUrl/fsDownloadUrl`
+en `api/client.ts`; Editor pinta imágenes con `<ImagePreview>` desde `/raw` (+ botón Descargar; binario
+415 → estado `binary` con descarga); FileTree con acción `⤓` por fila (archivo/carpeta). DESIGN §7.1 y §8.
+
+Verificado: typecheck + build verdes; harness de runtime 19/19 (MIME y bytes exactos, zip con estructura
+anidada vía `unzip`, traversal bloqueado, tope inline vs descarga sin tope). Sin commit. Nota: el server
+estaba instalado en modo prod (sin devDeps) → `npm install --include=dev` para compilar.

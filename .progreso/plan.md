@@ -73,6 +73,45 @@
 - [x] **Verificación**: typecheck + build (client+server) verdes; smoke del ciclo (attach→message→cerrar socket→
       el turno sigue→reattach recupera→push). Actualizar `estado.md`/`log.md`.
 
+## Fase 5 — Source Control (git desde la UI)  ✅ IMPLEMENTADA (2026-08-04, sin desplegar)
+
+> DESIGN §8.1 + ADR 2026-08-04 en `decisiones.md`. Alcance esencial y sin operaciones destructivas.
+
+- [x] Backend `server/src/git/` (service sobre el binario `git` + 8 endpoints bajo auth)
+- [x] Credencial por `GITHUB_TOKEN` (env → credential helper efímero; nunca en argv ni al cliente)
+- [x] Panel `SourceControl` (hoja inferior) + chip de rama en Files
+- [x] **git-status en el explorer** (marcas M/A/D/?/R por archivo) — pendiente que venía de la Fase 3
+- [x] Verificación: typecheck + build + 39 pruebas reales del módulo + 19 smoke HTTP
+- [ ] **QA en el móvil** (incluido el primer push real, que NO se ha ejecutado desde aquí)
+- [ ] v2 opcional: ver el diff de cada archivo antes de guardar; pull requests / issues de GitHub
+
+## Rendimiento del Chat — techo de render (2026-08-05/06)
+
+> La PWA se reiniciaba al volver a la vista Chat: el hilo se pintaba entero (~46.000 nodos) y el WebView
+> de iOS moría. DESIGN §6.7 + ADR 2026-08-05.
+
+- [x] **Ventana del hilo**: presupuesto duro de 120 bloques recortando el primer item por su cola,
+      `▲ Mostrar mensajes anteriores` (+120) sin mover la posición de lectura, ventana congelada mientras
+      se lee hacia arriba, reset en fase de render al cambiar de conversación
+- [x] **Techo por card**: diff 24 líneas, bash 16, `⋯ N líneas más` (expansión efímera)
+- [x] **`AssistantMessage` memoizado** + hilo y composer fuera del pull-to-refresh (`data-ptr="off"`)
+- [x] Verificación: typecheck + build + medición con la `threadWindow` real → **46.047 → 2.538 nodos**
+- [ ] **Rebuild del frontend** (el bundle servido tiene una versión intermedia: la 16ª sesión lo
+      redesplegó a mitad de este trabajo) + **QA en el iPhone** (ver `estado.md`)
+- [ ] Opcional: quitar el remonte de vistas (`AppShell key={view}`) para no perder el borrador del
+      composer ni el scroll — ver `bugs.md`
+
+## FS — ver imágenes + descargas (2026-10-23)
+
+> Pedido del usuario: ver imágenes en la app, descargarlas, y descargar carpetas enteras. ADR + DESIGN §7.1/§8.
+
+- [x] Backend: `GET /api/fs/raw` (archivo crudo inline, MIME, tope 25 MB) y `GET /api/fs/download`
+      (archivo attachment o **carpeta → zip** con `archiver`, streaming), bajo auth + `resolveSafe`
+- [x] Cliente: `isImagePath/fsRawUrl/fsDownloadUrl`; Editor con `<ImagePreview>` + estado `binary`;
+      FileTree con acción `⤓` por fila (archivo/carpeta)
+- [x] Verificación: typecheck + build + harness de runtime 19/19 (MIME/bytes, zip anidado, traversal)
+- [ ] **QA en el iPhone** (PWA): abrir imagen, descargarla, descargar carpeta grande (zip) + commit/deploy
+
 ## Pendientes abiertos (2026-07-26)
 
 - [ ] **QA del push en el iPhone** — la cadena servidor→Apple está verificada (suscripción registrada y

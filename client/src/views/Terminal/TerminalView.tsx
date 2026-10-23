@@ -11,12 +11,16 @@ import KeyBar from './KeyBar'
 import { applyModifiers, NO_MODS, type Modifiers } from './keys'
 import { tabStatus, terminalStore, type ConnStatus, type TabStatus } from './terminalStore'
 import { useWorkspace } from '../../workspace/WorkspaceProvider'
+import { useKeyboardInset } from '../../hooks/useKeyboardInset'
 import ConnBanner, { useDelayedFlag } from '../../components/ConnBanner/ConnBanner'
 import styles from './TerminalView.module.css'
 
 export default function TerminalView() {
   const snap = useSyncExternalStore(terminalStore.subscribe, terminalStore.getSnapshot)
   const { workspace } = useWorkspace()
+  // Publica `--kb-inset`: cuánto solapa el teclado del móvil. `.view` lo usa para
+  // encoger su columna y que la barra de teclas no quede tapada por el teclado.
+  useKeyboardInset()
   const [modifiers, setModifiers] = useState<Modifiers>(NO_MODS)
   const [themeVersion, setThemeVersion] = useState(0)
 

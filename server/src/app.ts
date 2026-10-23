@@ -7,6 +7,7 @@ import { healthRouter } from './routes/health.js';
 import { authRouter } from './auth/routes.js';
 import { requireAuth } from './auth/middleware.js';
 import { fsRouter } from './fs/routes.js';
+import { gitRouter } from './git/routes.js';
 import { chatRouter } from './chat/routes.js';
 import { systemRouter } from './system/routes.js';
 import { pushRouter } from './push/routes.js';
@@ -33,6 +34,7 @@ export function createApp(): express.Express {
   // Los routers de features (fs, terminal, chat) se montan AQUÍ DEBAJO para
   // heredar el gate de autenticación (llegan en fases posteriores).
   app.use('/api/fs', fsRouter); // filesystem local (árbol, leer, escribir)
+  app.use('/api/git', gitRouter); // Source Control (estado, commit, push/pull, ramas)
   app.use('/api/chat', chatRouter); // lista de sesiones de chat (pestañas)
   app.use('/api/system', systemRouter); // panel System de Settings (estado real)
   app.use('/api/push', pushRouter); // notificaciones Web Push (suscripciones)

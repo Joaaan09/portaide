@@ -309,6 +309,153 @@ hilo del server no los tiene):
 (umbral 100px). Si está leyendo hacia arriba, su posición se respeta aunque entren mensajes o el hilo se
 reconstruya al reconectar. Al cambiar de conversación siempre se baja al fondo.
 
+### 6.4. Escribir mientras Claude trabaja (entrega en caliente + cola)
+
+Como en Claude Code: **el composer nunca se bloquea** y lo que escribes **no espera a que termine** el
+mensaje anterior — se le inyecta al agente en la sesión viva y lo atiende sobre la marcha.
+
+- **Botón del composer**: `↑` (acento) **siempre que haya texto**. `■` (detener) solo cuando el campo
+  está **vacío** y hay un turno vivo — así el mismo sitio nunca hace dos cosas a la vez. Placeholder con
+  turno vivo: `Escribe sin esperar…`.
+- **En el hilo, el mensaje aparece DONDE cae**: su burbuja se intercala en medio del trabajo del agente
+  (el mensaje del asistente se cierra ahí y sigue en uno nuevo debajo). Es la señal de que ha entrado ya,
+  y es lo mismo que se ve en Claude Code. Un tramo de asistente que quede **sin contenido** no se pinta:
+  nada de cabeceras `✦ Claude Code` huérfanas.
+- **Escribir CORTA el paso en curso** (medido: el comando en vuelo se aborta a los ~100 ms). Es el precio
+  de que te atienda ya, y es lo que hace Claude Code. Lo que quedó a medias se marca **`⚠ Interrumpido`**
+  en `--yellow` — nunca `✕ Rejected`, que diría que el usuario rechazó algo que no rechazó. Mismo criterio
+  para una card de permiso o una pregunta abiertas cuando el usuario contesta escribiendo en vez de pulsar
+  el botón: quedan `⚠ Interrumpido` / `⚠ Interrumpida`.
+- Si un mensaje llega a inyectarse pero el turno **muere antes** de que el agente lo recoja (Detener, o un
+  fallo), se escribe en el hilo `⚠ Mensaje no entregado (turno interrumpido): «…»`. Su burbuja ya estaba
+  ahí: callarlo sería fingir que se atendió.
+- **Burbuja en cola** (caso minoritario: el turno todavía espera slot de concurrencia, o el mensaje pide
+  otro modelo/esfuerzo y no puede mezclarse con el turno en curso): burbuja atenuada (`opacity: .62`,
+  igual que "enviando") + pie a la derecha en mono 10.5px: `⏳ En cola` en `--faint` + botón
+  **`Cancelar`** (mismo chip que `Reintentar`: `--surface2`, borde `--border`, radio 7px; texto en
+  `--dim`, no en `--accent` — es una acción de descarte, no la principal).
+- La cola la manda el **server** en `snapshot`/`status` (`queue: [{localId, text}]`), no es estado local:
+  al reabrir la PWA o entrar desde otro dispositivo se ven los mismos mensajes en espera.
+- Cancelar retira el mensaje (nunca se ejecuta). Si ya se entregó al agente, la cancelación no aplica y la
+  burbuja pasa a mensaje normal — nunca se finge que se canceló.
+- `Detener` (■) sigue abortando el turno **y vaciando la cola**: sus burbujas pasan a *No entregado* con
+  `Reintentar` (§6.3), no desaparecen en silencio.
+
+### 6.5. Tool-card de preguntas (`AskUserQuestion`)
+
+Cuando Claude pregunta con opciones, la tarjeta genérica de Approve/Reject **no sirve**: hay que elegir.
+Card propia, con el mismo esqueleto que Edit (radio 10px, `--surface`, borde `--border`):
+
+- **Cabecera**: `?` en `--accent2` + `Question` en mono + contador `N preguntas` en `--faint` (solo si >1).
+- **Una sección por pregunta** (el engine manda de 1 a 4), separadas por borde `--border` de 1px:
+  - **chip de `header`** (mono 10px, `--surface2`, borde `--border`, radio 6px, `--dim`) — el rótulo corto.
+  - **texto de la pregunta** en `--text` 13px.
+  - **opciones** (2–4) como filas-botón full-width, ≥44px táctiles: marca a la izquierda
+    (`○`/`●` en selección única, `☐`/`☑` en múltiple), `label` en `--text` 13px y `description` debajo en
+    `--faint` 11.5px. Seleccionada: fondo `--surface2`, borde `--accent`, marca en `--accent`.
+    Semántica: `role="group"` + `aria-pressed` en cada botón — **no** `radiogroup`, que exigiría roving
+    tabindex y flechas; que la selección sea única o múltiple lo dice el enunciado.
+  - **`Otro…`**: última fila-botón; al activarla despliega un `textarea` (mismo estilo que el composer)
+    para respuesta libre. Es la vía para "ninguna de estas" — el engine la acepta como texto.
+  - En **multiSelect** se pueden marcar varias (se envían separadas por `, `); en selección única, elegir
+    una sustituye a la anterior.
+- **Pie**: fila con **`Enviar respuestas`** (`--accent`, ocupa el ancho restante, ≥44px),
+  **deshabilitado hasta que todas las preguntas tengan respuesta** (contestar a medias hace que el agente
+  vuelva a preguntar), y **`Descartar`** a su derecha (chip `--surface2`, ≥44px) que rechaza la pregunta
+  sin responder.
+- **Tras responder**: el pie se sustituye por el resumen en mono `--faint`, una línea por pregunta con la
+  respuesta elegida y un `✓` en `--green`. Descartada por el usuario → `✕ Descartada` en `--red`; cerrada
+  sin decisión suya (turno interrumpido, o escribió en vez de elegir) → `⚠ Interrumpida` en `--yellow`;
+  sin resolver → `Sin responder` en `--faint`.
+- Estas cards **aparecen también en modo Bypass**: preguntar no es pedir permiso, así que el
+  auto-approve no las salta (verificado contra el SDK).
+- Motion (§11): entrada con el fade de bloque; `:active` de opción/botón con `scale(.97)` y sin nada de
+  esto bajo `prefers-reduced-motion`.
+
+### 6.6. Chip de proyecto del composer (a qué carpeta apunta el chat)
+
+El chip `@…` sobre el textarea **no es decorativo**: dice **a qué proyecto pertenece esta conversación**
+(su `cwd`, el que reciben todos sus turnos). Cada conversación tiene el suyo, independiente del workspace
+que haya abierto Files.
+
+- **Contenido**: `@` en `--accent` + la ruta **relativa a la raíz navegable** (`portaide`, `foo/bar`) en
+  **JetBrains Mono 10px** `--dim` (es una ruta, §2). Trunca **por delante** (`direction: rtl` + `<bdi>`)
+  para conservar el final, que es lo que identifica el proyecto. El `title` lleva la ruta absoluta.
+- **Dos estados, y la diferencia se ve**:
+  - **Conversación sin estrenar** (hilo vacío) → el chip es un **botón** con `⌄` en `--faint`: abre el
+    `FolderPicker` ("Carpeta del proyecto" / "Usar esta carpeta"). `:hover` sube el borde a `--accent` y
+    el texto a `--text`; `:focus-visible` con el anillo `--accent2` estándar. El área táctil se agranda
+    con `padding-block` compensado por `margin-block` negativo: 44px reales sin engordar la fila (§11).
+  - **Conversación ya iniciada** → chip **estático** con un **candado** de 9px en `--faint`, y el `title`
+    explica el porqué. Nada de botón deshabilitado: si no se puede, no se ofrece.
+- **Por qué se congela**: el engine indexa sus transcripts **por proyecto**
+  (`~/.claude/projects/<cwd>`); mover el `cwd` a mitad de hilo partiría el historial y el `resume`. El
+  servidor lo garantiza además de la UI (ancla en `SessionRuntime`).
+- **Valor por defecto**: un chat nuevo hereda el **workspace activo** (lo que ya hacía), pero desde el
+  primer mensaje queda **anclado** a esa carpeta aunque después cambies de workspace en Files.
+
+### 6.7. Techo de render del hilo (el chat NO pinta toda la conversación)
+
+> **Por qué existe esta regla (2026-08-05).** Medido contra la base real: la conversación más larga
+> guardada tiene **3.673 eventos → 632 tool-cards, 10.883 líneas de diff y 3.558 de salida de bash**,
+> es decir **~45.000 nodos DOM** más 30 KB de Markdown que re-parsear. Como el shell remonta la vista
+> al navegar (§5, `key={view}`), volver al Chat reconstruía ese árbol entero de golpe y **iOS mataba
+> la PWA** (se veía como "la app se reinicia"). El hilo tiene techo de render **siempre**, no solo en
+> móvil: un chat que crece sin límite no puede pintar sin límite.
+
+**Ventana del hilo.** Se pinta **desde el final hacia atrás** hasta agotar un presupuesto de
+**120 bloques** (cuenta 1 por burbuja de usuario y 1 por cada bloque del asistente: thinking, tool-card
+o tramo de texto). El presupuesto es **duro**: manda sobre el número de mensajes.
+
+> **Ojo, esto no es un detalle de implementación:** un turno entero del asistente es **UN item** (el
+> hilo solo abre mensaje nuevo con la burbuja del usuario o el fin de turno), y en la base real hay
+> items de **576 bloques**. Por eso la ventana **no puede contarse por mensajes**: el **primer item
+> visible se recorta por su cola** (se pintan sus últimos bloques hasta llenar el presupuesto). Una
+> ventana "por mensajes" pinta el turno entero y deja el techo en nada.
+
+- Si queda historia fuera —items enteros **o bloques del primero**—, encabeza el hilo una **fila-botón
+  a ancho completo**: `▲ Mostrar mensajes anteriores` en **JetBrains Mono 11px** `--dim` sobre
+  `--surface` con borde `--border` y radio 9px, ≥44px de alto. Un tap **amplía el presupuesto en +120**
+  (no lo abre todo: nunca hay un salto de memoria sin pedirlo).
+- Al ampliar se **conserva la posición de lectura** (se preserva `scrollHeight − scrollTop`): el
+  contenido nuevo entra por arriba sin mover lo que estabas leyendo, y los items que entran **no
+  reproducen la animación de entrada** (§11): animar cien elementos es justo el frame que se quiere
+  barato.
+- **La ventana no se encoge mientras lees.** Con un turno vivo, cada bloque nuevo empujaría el borde
+  superior y desmontaría lo que estás mirando. Regla: mientras **no** estés pegado al fondo, la ventana
+  queda **congelada**; volver al fondo la descongela (y eso tiene que provocar un render por sí solo:
+  si se espera al siguiente evento del servidor, con el turno ya terminado no llega ninguno).
+  **La congelación tiene tope: 3× el presupuesto.** Congelar el borde superior sin tocar el inferior deja
+  crecer la ventana con el turno; medido, llegaba a **1.020 bloques** — el techo desaparecía justo
+  mientras el agente trabaja. Pasado el tope, el borde superior avanza y el scroll se compensa con el
+  mismo mecanismo de la ampliación (delta negativo), así que tampoco salta lo que lees.
+- Al **cambiar de conversación** la ventana vuelve al mínimo, y lo hace **en el mismo render** (no un
+  commit después: pintar la conversación nueva con el presupuesto crecido de la anterior es exactamente
+  el pico que se quiere evitar). Es deliberado: la sesión se reencuadra en lo reciente.
+
+**Techo por card.** Una sola card puede traer cientos de líneas (hay diffs de 485 en la base real):
+
+- **Edit / diff**: **24 líneas** visibles; el resto colapsado.
+- **Bash**: **16 líneas** de salida; el resto colapsado.
+- El corte se cierra siempre con una **fila-botón** `⋯ N líneas más` en mono 11px `--faint`, alineada
+  con el contenido de la card, que expande esa card **entera** (sin segundo tope). `aria-expanded`.
+- La expansión es **local y efímera**: no se persiste ni se recuerda al remontar. Ese olvido es la
+  protección — si se recordara, volver a la vista reconstruiría otra vez el árbol gigante.
+
+**Sin animación de altura** en ninguno de los dos controles: animar el reflow de miles de nodos es
+justo lo que no queremos (§11). El contenido aparece directamente; el cambio ya es evidente.
+
+**El hilo y el composer quedan fuera del pull-to-refresh** (`data-ptr="off"`, lo respeta
+`PullToRefresh`). En una lista de mensajes, "arriba del todo" es la historia antigua y se llega
+arrastrando hacia abajo: exactamente el gesto de recargar. Al topar arriba, el siguiente arrastre
+reiniciaba la app — la misma avería por otra puerta. El composer se excluye por lo mismo: es la zona que
+más se manosea y no scrollea, así que cualquier arrastre ahí recargaba. **La recarga sigue disponible en
+la cabecera de pestañas** del Chat (y en las otras cuatro vistas). En el Chat recargar tampoco aporta:
+el hilo es autoritativo del servidor y llega por WebSocket. Cualquier otra zona puede declararse igual.
+
+**Consecuencia para quien implemente cards nuevas**: cualquier bloque cuyo tamaño lo decida el
+contenido (salidas, listados, diffs) **nace con techo**. Es requisito, no pulido.
+
 ## 7. Vista Editor
 
 - **Tira de pestañas** de archivos (icono-badge de extensión + nombre; activa subrayada `--accent`;
@@ -321,6 +468,22 @@ reconstruya al reconectar. Al cambiar de conversación siempre se baja al fondo.
 - **Barra de símbolos** (teclado móvil): fila scrollable de teclas mono (`{ } ( ) [ ] < > / \ | ; : = → ⌘ ⏎`),
   celdas ~42–46px, separadas por `--border`.
 
+### 7.1. Visor de imágenes y descarga (añadido 2026-10-23; ADR en `.progreso/decisiones.md`)
+
+El Editor es también el **visor** cuando el archivo abierto no es texto:
+
+- **Imágenes** (`png jpg jpeg gif webp svg avif bmp ico heic heif`): no se leen como texto; se pintan con
+  `<img>` desde `GET /api/fs/raw` (la cookie de sesión viaja sola, mismo origen). El escenario ocupa el
+  stage, centra la imagen (`object-fit: contain`, sin desbordar) sobre un **damero sutil** de `--surface`
+  sobre `--bg` para distinguir transparencias, con un `box-shadow: 0 0 0 1px --border` en vez de borde duro.
+  Spinner `--accent` mientras carga; si no se puede mostrar (muy grande, formato no soportado por el
+  WebView) cae a un estado sobrio con botón de descarga. En la **cabecera**, en lugar del botón `Guardar`,
+  un botón **`⤓ Descargar`** (molde de `.save` pero neutro, `--dim` → `--text`/`--accent` al enfocar).
+- **Binario no-imagen** (la lectura devuelve 415): estado centrado `▢ · archivo binario · no se puede
+  editar` + botón `⤓ Descargar`. Nunca el error genérico de carga.
+- **Descarga**: siempre vía `GET /api/fs/download` (`<a download>`): un archivo se baja tal cual, una
+  carpeta como **`.zip`** (ver §8). El tope de previsualización inline es 25 MB; la descarga no tiene tope.
+
 ## 8. Vista Files
 
 - **Cabecera**: badge del proyecto (cuadradito acento con inicial) + nombre + chip de rama (`⑂ main`).
@@ -328,6 +491,73 @@ reconstruya al reconectar. Al cambiar de conversación siempre se baja al fondo.
 - **Explorer**: label "EXPLORER" en `--faint`; filas de árbol con `chevron` (▾/▸) para carpetas,
   icono-badge para archivos, indentación por profundidad, marca git a la derecha (§3). Fila activa:
   fondo `--surface2` + borde-izquierdo 2px `--accent`.
+- **Acción de descarga por fila** (`⤓`, añadida 2026-10-23): cada fila lleva a la derecha un botón
+  `⤓` discreto (opacidad .55, `--faint`; `--accent` + opacidad 1 al enfocar/tocar), **hermano** del
+  botón de la fila (no anidado) para no romper la semántica ni el toque de abrir/plegar. Un **archivo**
+  descarga el archivo tal cual; una **carpeta** descarga un **`.zip`** generado al vuelo por el backend
+  (`GET /api/fs/download`, `<a download>` → la cookie de sesión viaja sola). Es la vía para bajar carpetas
+  enteras del proyecto desde el móvil. Convive con la marca git (que queda a su izquierda).
+
+### 8.1. Source Control — chip de rama + panel de git
+
+> Git **no es una sexta vista**: las 5 vistas de CLAUDE.md §3 son el norte de producto. Vive **dentro de
+> Files**, como el Source Control de VS Code. Añadido 2026-08-04; ADR en `.progreso/decisiones.md`.
+
+**Chip de rama (cabecera de Files).** Sustituye al chip decorativo `⑂ main` de §8 por un **botón** real.
+Va en la **fila de estado de conexión**, alineado a la derecha (la fila del proyecto ya lleva hamburguesa +
+badge + ruta + `change folder`: meter ahí un quinto elemento la parte en móvil):
+
+- Contenido: `⑂ <rama>` en **JetBrains Mono** 11px (dato técnico, §2) + contadores `↑n ↓n` en `--faint`
+  y, si hay cambios sin guardar, un **punto** `●` en `--yellow` con `aria-label="cambios sin guardar"`.
+- Estilo: mismo molde que `change folder` (borde `--border`, fondo `--surface2`, radio 8px, ≥44px de
+  alto táctil). Texto de la rama en `--dim`; al abrir el panel, `--accent`.
+- **Si la carpeta no es un repo git**: el chip **no se pinta** (nada de estados muertos ni de explicar
+  ausencias). El explorer se comporta como hasta ahora.
+
+**Panel (hoja inferior).** Se abre desde el chip. Mismo patrón que `FolderPicker` (§8): `createPortal`
+a `document.body`, `z-index: 200`, backdrop `rgba(0,0,0,.55)`, hoja anclada abajo con
+`border-radius: 16px 16px 0 0`, borde `--border`, fondo `--surface`, `max-height: 85svh` y respeto de
+`env(safe-area-inset-bottom)`. Cierra con backdrop, `Esc` y `✕`. Foco atrapado dentro mientras está abierto.
+Orden vertical, de arriba abajo:
+
+1. **Cabecera**: título `Source Control` (14px, `--text`) + subtítulo con la ruta del repo (mono 11px,
+   `--faint`, truncada por delante) + `✕`.
+2. **Fila de rama**: `⑂ <rama>` (mono, `--accent`) + `▾` que despliega la lista de ramas locales
+   (radio de selección) y una acción `+ nueva rama` con campo de texto. `↑n` en `--green` y `↓n` en
+   `--blue`; `sin upstream` en `--faint` cuando la rama no tiene remoto.
+3. **Acciones de red**: dos botones al 50% — `↓ Bajar` (pull) y `↑ Subir` (push). Estado ocupado:
+   spinner de §6.3 + label en presente (`bajando…`/`subiendo…`), botón `aria-busy`. Deshabilitados
+   (opacidad .45, `cursor: not-allowed`) mientras corre cualquier operación.
+4. **Lista de cambios**, en dos grupos con eyebrow en `--faint` mono: `PREPARADOS n` y `CAMBIOS n`.
+   Cada fila: **letra de estado** (mono, 12px, ancho fijo 14px) + **nombre del archivo** (`--text`) +
+   **carpeta** (mono 10px, `--faint`, truncada por delante) + botón de acción a la derecha
+   (`−` quitar / `+` añadir, 36×36, `--dim`). Colores de la letra según §3 — `M` `--yellow`,
+   `A` `--green`, `D` `--red`, `?` `--blue`, `R` `--accent` — más `!` en `--red` para conflictos.
+   Cada grupo tiene un botón de cabecera para operar sobre **todo** (`añadir todo` / `quitar todo`).
+   Vacío total → estado centrado `sin cambios` en `--faint`.
+5. **Commit**: `textarea` de 2 filas (`Mensaje del commit`, redimensionable a mano con tope), y debajo el botón
+   primario **`Guardar cambios`** a ancho completo, fondo `--accent`, texto `--on-accent`. Deshabilitado
+   sin mensaje o sin nada preparado. Al terminar: el mensaje se vacía y aparece el resultado.
+6. **Tira de resultado** (última operación): fondo `--surface2`, borde 1px, mono 11px. Éxito → texto
+   `--green` (`✓ commit a1b2c3d` / `✓ subido a origin/main`). Error → `--red` con el mensaje **real** de
+   git recortado a 3 líneas y scroll horizontal. Nunca se traga un fallo en silencio.
+
+**Reglas duras del panel**
+
+- **Sin operaciones destructivas**: nada de `force`, `reset --hard`, descartar cambios ni resolver
+  conflictos. El pull es `--ff-only`; si diverge, la tira de error lo dice y remite a la Terminal.
+  Un móvil no es sitio para resolver un merge a tres bandas.
+- **Un solo botón activo**: mientras una operación corre, todos los controles quedan deshabilitados
+  salvo el cierre (nada de dos operaciones de git pisándose).
+- **A11y**: `role="dialog"` + `aria-modal`, hoja etiquetada por el título, cada fila con `aria-label`
+  que incluye el estado en palabras ("modificado", "sin seguimiento"), toques ≥44px, y `aria-live="polite"`
+  en la tira de resultado.
+- **Movimiento** (§11): la hoja entra con `translateY(12px) → 0` + opacidad, 180ms `--ease-out`; el
+  backdrop solo opacidad. Con `prefers-reduced-motion` únicamente opacidad.
+
+**Marca git en el explorer.** El árbol pinta la letra de estado a la derecha de cada fila (§3), en mono
+11px, alineada al borde derecho. Una carpeta con descendientes modificados muestra un punto `●`
+`--yellow` en vez de letra. La marca es informativa: **no** es interactiva ni cambia el toque de la fila.
 
 ## 9. Vista Terminal
 

@@ -2,22 +2,43 @@
 // en VS Code, ahora conectada a Claude REAL vía el puente /ws/chat (Agent SDK),
 // con Approve/Reject reales de herramientas. El estado vive en el store singleton
 // (useChatSession) para sobrevivir al remontaje de la vista.
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useChatSession } from './useChatSession'
 import { useWorkspace } from '../../workspace/WorkspaceProvider'
 import ChatTabs from './ChatTabs'
 import ConnBanner from '../../components/ConnBanner/ConnBanner'
+import FolderPicker from '../../components/FolderPicker/FolderPicker'
 import ChatThread from './ChatThread'
 import ChatComposer from './ChatComposer'
 import ChatHistory from './ChatHistory'
 import styles from './ChatView.module.css'
 
+/**
+ * Etiqueta del chip de proyecto: la ruta RELATIVA a la raíz navegable
+ * (`servers/portaide` → `portaide`), que es lo que identifica el proyecto sin
+ * repetir el prefijo en cada chat. Fuera de la raíz cae al último segmento.
+ */
+function projectLabel(cwd: string | null, root: string | null): string {
+  if (!cwd) return 'workspace'
+  if (root && cwd.startsWith(root + '/')) return cwd.slice(root.length + 1)
+  const parts = cwd.split('/').filter(Boolean)
+  return parts[parts.length - 1] ?? cwd
+}
+
 export default function ChatView() {
   const chat = useChatSession()
   const [historyOpen, setHistoryOpen] = useState(false)
-  // Lectura del workspace activo → es el `cwd` de cada turno (import en LECTURA).
-  const { workspace } = useWorkspace()
-  const contextLabel = workspace ? (workspace.split('/').filter(Boolean).pop() ?? undefined) : undefined
+  const [pickerOpen, setPickerOpen] = useState(false)
+  // Workspace activo: es la carpeta que HEREDA un chat sin estrenar (el store la
+  // usa como default; cada conversación fija la suya al primer mensaje).
+  const { workspace, root } = useWorkspace()
+  const { setDefaultCwd } = chat
+  useEffect(() => {
+    setDefaultCwd(workspace)
+  }, [workspace, setDefaultCwd])
+
+  const cwd = chat.activeCwd
+  const cwdLabel = projectLabel(cwd, root)
 
   return (
     <main className={styles.view}>
@@ -40,10 +61,12 @@ export default function ChatView() {
       <ChatThread
         session={chat.activeSession}
         onDecide={chat.decide}
+        onAnswer={chat.answerQuestion}
         onRetryMessage={chat.retryMessage}
+        onCancelQueued={chat.cancelQueued}
       />
       <ChatComposer
-        onSend={(text) => chat.sendMessage(text, workspace)}
+        onSend={chat.sendMessage}
         model={chat.model}
         modelOptions={chat.modelOptions}
         onModelChange={chat.setModel}
@@ -54,14 +77,35 @@ export default function ChatView() {
         onEffortChange={chat.setEffort}
         streaming={chat.activeSession.streaming ?? false}
         onInterrupt={chat.interrupt}
-        contextLabel={contextLabel}
+        cwdLabel={cwdLabel}
+        cwdPath={cwd}
+        // Solo se puede elegir carpeta antes del primer mensaje: después el
+        // proyecto queda anclado (el engine indexa sus transcripts por cwd).
+        onChangeCwd={chat.canChangeCwd && root ? () => setPickerOpen(true) : undefined}
       />
+      {/* `canChangeCwd` en la condición: si la conversación arranca con el
+          selector abierto (p.ej. desde otro dispositivo), se cierra solo. */}
+      {pickerOpen && root && chat.canChangeCwd && (
+        <FolderPicker
+          root={root}
+          initialPath={cwd ?? root}
+          title="Carpeta del proyecto"
+          confirmLabel="Usar esta carpeta"
+          onClose={() => setPickerOpen(false)}
+          onOpen={(path) => {
+            chat.setSessionCwd(chat.activeId, path)
+            setPickerOpen(false)
+          }}
+        />
+      )}
       <ChatHistory
         open={historyOpen}
-        cwd={workspace}
+        // El historial del engine es POR PROYECTO: el del chat activo, que es el
+        // que muestra el chip (y coincide con el workspace si aún no está anclado).
+        cwd={cwd}
         onClose={() => setHistoryOpen(false)}
-        onOpen={(meta) => chat.reopenSession({ id: meta.id, title: meta.title })}
-        onOpenEngine={(id) => chat.openEngineSession({ id, cwd: workspace })}
+        onOpen={(meta) => chat.reopenSession({ id: meta.id, title: meta.title, cwd: meta.cwd })}
+        onOpenEngine={(id) => chat.openEngineSession({ id, cwd })}
         onDelete={chat.deleteSession}
         onRename={chat.renameSession}
         fetchHistory={chat.fetchHistory}

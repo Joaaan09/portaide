@@ -85,6 +85,10 @@
   /* Holgura inferior según el modo de navegación: 0 en drawer, alto de la barra
      en bottombar. La fija NavModeProvider en <html>; este es el default (drawer). */
   --nav-inset: 0px;
+  /* Altura que el teclado virtual del móvil solapa sobre la layout viewport.
+     La publica `useKeyboardInset` (vía visualViewport); default 0 (sin teclado).
+     La consume la vista Terminal para levantar su barra de teclas por encima. */
+  --kb-inset: 0px;
   --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
 }
 

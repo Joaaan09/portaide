@@ -36,6 +36,23 @@ function scrollableAncestor(start: Element | null, boundary: Element): HTMLEleme
   return null
 }
 
+/**
+ * Zonas que se declaran fuera del gesto con `data-ptr="off"` (DESIGN.md §6.7).
+ * Caso real: el hilo del Chat. Ahí "arriba del todo" es historia antigua y para
+ * leerla arrastras hacia abajo — justo el gesto de recargar. Al llegar al tope,
+ * el siguiente arrastre reiniciaba la app y reconstruía el hilo entero. En el
+ * Chat la recarga además no aporta nada: el estado es autoritativo del servidor
+ * y llega por el WebSocket.
+ */
+function pullDisabled(start: Element | null, boundary: Element): boolean {
+  let el = start as HTMLElement | null
+  while (el && el !== boundary) {
+    if (el.dataset.ptr === 'off') return true
+    el = el.parentElement
+  }
+  return false
+}
+
 interface PullToRefreshProps {
   children: ReactNode
 }
@@ -62,6 +79,12 @@ export default function PullToRefresh({ children }: PullToRefreshProps) {
 
     const onStart = (e: TouchEvent) => {
       if (refreshingRef.current) {
+        validRef.current = false
+        return
+      }
+      // Zona que se declara fuera del gesto (el hilo del Chat): ni siquiera se
+      // arma, así que no hay indicador ni recarga por mucho que se arrastre.
+      if (pullDisabled(e.target as Element, wrapper)) {
         validRef.current = false
         return
       }

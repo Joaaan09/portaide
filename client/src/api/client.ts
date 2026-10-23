@@ -8,11 +8,15 @@ const BASE = '/api'
 export class ApiError extends Error {
   readonly status: number
   readonly code: string
-  constructor(status: number, code: string) {
-    super(code)
+  /** Mensaje humano opcional del backend (`detail`). La API de git lo usa para
+   *  enseñar la salida real de git en vez de un código seco (DESIGN §8.1). */
+  readonly detail?: string
+  constructor(status: number, code: string, detail?: string) {
+    super(detail || code)
     this.name = 'ApiError'
     this.status = status
     this.code = code
+    this.detail = detail
   }
 }
 
@@ -45,7 +49,11 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   }
 
   if (!res.ok) {
-    throw new ApiError(res.status, extractCode(data))
+    const detail =
+      data && typeof data === 'object' && typeof (data as Record<string, unknown>).detail === 'string'
+        ? ((data as Record<string, unknown>).detail as string)
+        : undefined
+    throw new ApiError(res.status, extractCode(data), detail)
   }
   return data as T
 }
@@ -87,6 +95,35 @@ export interface FsReadResult {
 
 /** Codifica una ruta para meterla en el query string. */
 const q = (path: string): string => encodeURIComponent(path)
+
+/** Extensiones que tratamos como imagen previsualizable (vista Editor). */
+const IMAGE_EXTS = new Set([
+  'png',
+  'jpg',
+  'jpeg',
+  'gif',
+  'webp',
+  'svg',
+  'avif',
+  'bmp',
+  'ico',
+  'heic',
+  'heif',
+])
+
+/** true si la ruta apunta a un formato de imagen que sabemos previsualizar. */
+export function isImagePath(path: string): boolean {
+  const dot = path.lastIndexOf('.')
+  if (dot < 0) return false
+  return IMAGE_EXTS.has(path.slice(dot + 1).toLowerCase())
+}
+
+/** URL para servir un archivo CRUDO inline (p.ej. `<img src>`). Lleva la cookie
+ *  de sesión por ser del mismo origen; el gate de auth del backend sigue vivo. */
+export const fsRawUrl = (path: string): string => `${BASE}/fs/raw?path=${q(path)}`
+
+/** URL de descarga (attachment): un archivo tal cual, una carpeta como .zip. */
+export const fsDownloadUrl = (path: string): string => `${BASE}/fs/download?path=${q(path)}`
 
 export const fsContext = (): Promise<FsContext> => api.get<FsContext>('/fs/context')
 

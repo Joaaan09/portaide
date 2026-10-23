@@ -13,6 +13,7 @@ import { useEffect, useRef } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { buildXtermTheme } from './xtermTheme'
+import { SEQ } from './keys'
 import { terminalStore, type TerminalSink } from './terminalStore'
 import styles from './TerminalView.module.css'
 
@@ -43,6 +44,82 @@ interface TerminalPaneProps {
 
 const prefersReducedMotion = (): boolean =>
   window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+const isCoarsePointer = (): boolean => window.matchMedia('(pointer: coarse)').matches
+
+// Auto-repeat sintético del backspace. En iOS, al MANTENER pulsado el borrado del
+// teclado virtual NO se emiten `keydown` repetidos (sí en escritorio y en las
+// flechas), así que el borrado se queda en un solo carácter por toque. Lo suplimos:
+// al primer keydown de Backspace —xterm ya ha borrado ese carácter— programamos,
+// tras un retardo inicial, el reenvío de DEL a intervalos hasta soltar (`keyup`).
+const BACKSPACE_INITIAL_DELAY = 400 // ms antes de arrancar la repetición (como el SO)
+const BACKSPACE_REPEAT_INTERVAL = 55 // ms entre repeticiones
+const BACKSPACE_MAX_REPEATS = 500 // tope de seguridad por si se pierde el `keyup`
+
+/**
+ * Engancha el auto-repeat de backspace al textarea de xterm. `sendDel` reenvía un
+ * DEL al pty. Devuelve la función de limpieza. No hace nada en escritorio: allí el
+ * navegador ya emite su propia repetición y duplicarla borraría al doble.
+ */
+function attachBackspaceRepeat(ta: HTMLTextAreaElement, sendDel: () => void): () => void {
+  let delayTimer = 0
+  let repeatTimer = 0
+  let count = 0
+
+  const stop = (): void => {
+    if (delayTimer) {
+      clearTimeout(delayTimer)
+      delayTimer = 0
+    }
+    if (repeatTimer) {
+      clearInterval(repeatTimer)
+      repeatTimer = 0
+    }
+    count = 0
+  }
+
+  const onKeyDown = (e: KeyboardEvent): void => {
+    // Cualquier otra tecla corta una repetición de backspace en curso.
+    if (e.key !== 'Backspace') {
+      stop()
+      return
+    }
+    // Repetición NATIVA del navegador (escritorio / teclado físico en móvil): no la
+    // dupliques. `e.repeat` la delata; el puntero fino descarta el escritorio.
+    if (e.repeat || !isCoarsePointer()) {
+      stop()
+      return
+    }
+    if (delayTimer || repeatTimer) return // este mismo hold ya la programó
+    delayTimer = window.setTimeout(() => {
+      delayTimer = 0
+      repeatTimer = window.setInterval(() => {
+        count += 1
+        if (count > BACKSPACE_MAX_REPEATS) {
+          stop()
+          return
+        }
+        sendDel()
+      }, BACKSPACE_REPEAT_INTERVAL)
+    }, BACKSPACE_INITIAL_DELAY)
+  }
+
+  const onKeyUp = (e: KeyboardEvent): void => {
+    if (e.key === 'Backspace') stop()
+  }
+
+  // Capture: garantiza que recibimos el evento aunque xterm pare su propagación.
+  ta.addEventListener('keydown', onKeyDown, true)
+  ta.addEventListener('keyup', onKeyUp, true)
+  ta.addEventListener('blur', stop)
+
+  return () => {
+    ta.removeEventListener('keydown', onKeyDown, true)
+    ta.removeEventListener('keyup', onKeyUp, true)
+    ta.removeEventListener('blur', stop)
+    stop()
+  }
+}
 
 /**
  * Firma barata de un snapshot (longitud + hash FNV-1a de la cola). Sirve para
@@ -175,6 +252,11 @@ export default function TerminalPane({
     // Lo que el usuario teclea → arriba (TerminalView aplica modificadores y envía).
     const dataSub = term.onData((data) => onInputRef.current(data))
 
+    // Suple el auto-repeat del backspace que iOS no da en el teclado virtual.
+    const detachBackspace = term.textarea
+      ? attachBackspaceRepeat(term.textarea, () => onInputRef.current(SEQ.del))
+      : undefined
+
     // Reajuste ante cambios de tamaño del contenedor (rotación, teclado, split).
     const ro = new ResizeObserver(() => fitAndResizeRef.current())
     ro.observe(host)
@@ -185,6 +267,7 @@ export default function TerminalPane({
     return () => {
       cancelAnimationFrame(raf)
       ro.disconnect()
+      detachBackspace?.()
       dataSub.dispose()
       term.dispose()
       termRef.current = null

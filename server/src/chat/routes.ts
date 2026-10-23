@@ -3,7 +3,7 @@
 // por el WS /ws/chat; esto gestiona la META (títulos, open) y el HILO persistido
 // de las pestañas (modelo "cerrar ≠ borrar" + historial).
 import { Router } from 'express';
-import { resolveSafe } from '../fs/paths.js';
+import { resolveDirSafe, resolveSafe } from '../fs/paths.js';
 import { listEngineSessions, readEngineThread } from './engineHistory.js';
 import {
   createSession,
@@ -84,6 +84,7 @@ chatRouter.patch('/sessions/:id', async (req, res) => {
   const body = (req.body ?? {}) as {
     title?: unknown;
     claudeSessionId?: unknown;
+    cwd?: unknown;
     thread?: unknown;
     open?: unknown;
   };
@@ -91,6 +92,7 @@ chatRouter.patch('/sessions/:id', async (req, res) => {
   const patch: {
     title?: string;
     claudeSessionId?: string | null;
+    cwd?: string | null;
     thread?: unknown[];
     open?: boolean;
   } = {};
@@ -99,8 +101,33 @@ chatRouter.patch('/sessions/:id', async (req, res) => {
   if (typeof body.claudeSessionId === 'string' || body.claudeSessionId === null) {
     patch.claudeSessionId = body.claudeSessionId;
   }
+  // `cwd` = carpeta del proyecto de la conversación. Se valida bajo FS_ROOT y se
+  // exige que sea un directorio existente: una ruta basura no puede anclar una
+  // sesión (400 explícito, no un ancla silenciosa a la raíz).
+  if (body.cwd !== undefined) {
+    if (body.cwd === null) {
+      patch.cwd = null;
+    } else {
+      const abs = resolveDirSafe(body.cwd);
+      if (!abs) {
+        res.status(400).json({ error: 'bad_cwd' });
+        return;
+      }
+      patch.cwd = abs;
+    }
+  }
   if (Array.isArray(body.thread)) patch.thread = body.thread;
   if (typeof body.open === 'boolean') patch.open = body.open;
+
+  // El ancla de proyecto solo se puede fijar mientras la conversación NO haya
+  // arrancado. Con hilo ya escrito se IGNORA (el resto del patch sí se aplica):
+  // moverla partiría su historial en ~/.claude/projects. Se ignora en vez de
+  // 400 para no romper flujos que mandan `thread` y `cwd` juntos (materializar
+  // una conversación del engine ya existente).
+  if (patch.cwd !== undefined) {
+    const existing = await getSession(req.params.id);
+    if (existing && existing.thread.length > 0) delete patch.cwd;
+  }
 
   await upsertSession(req.params.id, patch);
   res.json({ ok: true });

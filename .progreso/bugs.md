@@ -5,6 +5,49 @@
 
 ## Abiertos
 
+- [ ] **2026-08-05 · menor · shell** — `AppShell` sigue remontando la vista al navegar
+  (`key={view}`, para reproducir la animación de entrada). Ya no es peligroso —el hilo del Chat tiene
+  techo de render (DESIGN §6.7)— pero cuesta: se pierde el **borrador del composer** y la posición de
+  scroll de cada vista, y Terminal (xterm) / Editor (CodeMirror) se recrean enteros en cada cambio. Si
+  molesta, el arreglo es mantener las vistas montadas y ocultar las inactivas, o subir el borrador al
+  store. `client/src/components/AppShell/AppShell.tsx:32`.
+- [ ] **2026-08-05 · menor · chat** — Los bloques de **texto Markdown no tienen techo** (DESIGN §6.7 dice
+  que todo bloque de tamaño libre debe tenerlo). Hoy no es el cuello de botella: el mayor de la base real
+  son 5.121 caracteres (~80 nodos) frente a las cards de cientos de líneas. Si algún día el agente
+  escribe respuestas kilométricas, aplicar el mismo patrón `⋯ N líneas más`.
+  `client/src/views/Chat/AssistantMessage.tsx` (caso `text`).
+- [ ] **2026-08-05 · menor · UI** — El botón `⋯ N líneas más` de un diff con **scroll horizontal** se
+  ajusta al ancho visible, no al `scrollWidth`: al desplazar lateralmente el texto del botón se queda
+  fuera de vista. Cosmético. `client/src/views/Chat/ToolCards.tsx` (`MoreLines`), `ToolCards.module.css`.
+- [ ] **2026-08-04 · menor · UI** — Una **tool cortada** por un mensaje inyectado (el `priority:'now'`
+  aborta el comando en vuelo) no recibe `tool_result`, así que su card se queda en `decision:'pending'`
+  sin `requestId`: no pinta ni botones ni estado, parece un comando a medias sin explicación. Convendría
+  marcar como `interrupted` las cards sin resultado al cerrarse el turno.
+  `client/src/views/Chat/ToolCards.tsx`, `chatStore.ts` (`applyResult`).
+- [ ] **2026-08-04 · menor · chat** — `refreshGrace()` (margen de cierre del canal de entrada) solo se
+  refresca desde el bucle `for await`; una espera larga en `canUseTool` (permiso/pregunta sin responder)
+  no cuenta como actividad. Inocuo hoy —cerrar la entrada no aborta el trabajo, y el margen solo se arma
+  si queda algo sin recoger— pero es un supuesto no evidente. `server/src/chat/bridge.ts`.
+
+- [ ] **2026-08-04 · MEDIO · recursos/UX** — Una **pregunta (`AskUserQuestion`) sin responder retiene un
+  slot de concurrencia indefinidamente**: `canUseTool` no tiene timeout y el turno ya cogió su slot en
+  `startTurn`. Con `CHAT_MAX_CONCURRENT_TURNS` preguntas sin contestar se congelan **todas** las
+  conversaciones, y el hilo sigue pintando el typing indicator como si trabajara. Preexistente (aplicaba
+  a los permisos Approve/Reject), más visible ahora que las preguntas funcionan de verdad. Opciones a
+  decidir: auto-deny por tiempo, o un estado propio "esperando tu respuesta" que **libere** el slot.
+  `server/src/chat/runtime.ts:startTurn`, `server/src/chat/bridge.ts:canUseTool`.
+- [ ] **2026-08-04 · menor · preguntas** — Si una misma llamada trae **dos preguntas con el enunciado
+  idéntico**, colisionan como clave del record `answers` (contrato del SDK: `{enunciado: respuesta}`) y el
+  agente repreguntará una de ellas. No hay forma de distinguirlas con ese contrato; el engine no suele
+  repetir enunciado. `client/src/views/Chat/QuestionCard.tsx`.
+- [ ] **2026-08-04 · menor · cancelar en cola** — El verbo `cancel` no lleva ACK: el cliente borra su
+  envío pendiente de forma optimista. Es seguro en los caminos reales (si el mensaje ya arrancó, su
+  burbuja vive en el log del server, y si esperaba slot o estaba en cola la cancelación **sí** aplica),
+  pero un `cancel_result{ok}` lo haría explícito. `server/src/chat/ws.ts`, `client/…/chatStore.ts`.
+- [ ] **2026-08-04 · menor · a11y** — El botón `Cancelar` de las burbujas en cola hereda los ~24px de alto
+  de `Reintentar`, por debajo del objetivo táctil del checklist §14. Decisión compartida con el botón ya
+  existente: si se sube uno, subir los dos. `client/src/views/Chat/ChatThread.module.css`.
+
 - [ ] **2026-07-26 · menor · recursos** — `RuntimeManager.runtimes` (chat) **no expulsa nunca**: `get(id)`
   crea un runtime para cualquier string y se llama también desde `detach`/`stop`/`set_model`, así que cada
   sesión vista mantiene su log completo en RAM de por vida. Preexistente; el multi-pestaña y las
@@ -81,3 +124,10 @@
   seguía escribiendo `setBottomInset(altura)` en `ShellLayoutProvider` pero ya nadie lo leía. Eliminados
   `client/src/layout/ShellLayoutProvider.tsx` (y el dir `layout/`), el `ResizeObserver` del composer y el
   wrapper en `App.tsx`. Typecheck + build verdes.
+
+- [ ] **2026-08-05 · menor · chat** — `markPending` (`chatStore.ts`, el reductor de `permission_request`)
+  **no rehabilita un bloque `question`**: solo toca `edit`/`bash`/`tool`. Si el server manda el permiso
+  genérico en vez de `question_request` (backend desalineado, o su `parseQuestions` devuelve null cuando el
+  del cliente sí parseó), la card de preguntas se queda **sin `requestId` → imposible de responder**. Con
+  el backend al día no ocurre. Si se arregla, ojo: aprobar sin `answers` hace que el agente **repregunte**,
+  así que el fallback correcto no es Approve/Reject, sino avisar en la card.

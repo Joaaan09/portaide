@@ -14,13 +14,14 @@
 //   detach{sessionId}                        → desuscripción (NO para el turno)
 //   message{sessionId,localId,text,cwd?,model?,mode?,effort?,workflows?} → arranca/encola
 //   stop{sessionId}                          → aborta el turno vivo + vacía cola
+//   cancel{sessionId,localId}                → retira UN mensaje de la cola (si no arrancó)
 //   permission{sessionId,requestId,decision,updatedInput?} → resuelve un Approve/Reject (modo Ask)
+//   answer{sessionId,requestId,answers}      → responde un AskUserQuestion (opciones/texto libre)
 //   set_model{sessionId,model} · set_permission_mode{sessionId,mode} → cambio en caliente
-import fs from 'node:fs';
 import type { IncomingMessage as HttpIncomingMessage } from 'node:http';
 import type { WebSocket } from 'ws';
 import type { WsSession } from '../auth/ws.js';
-import { FS_ROOT, resolveSafe } from '../fs/paths.js';
+import { FS_ROOT, resolveDirSafe } from '../fs/paths.js';
 import type { ChatEffort, ChatPermissionMode } from './bridge.js';
 import { runtimeManager } from './runtime.js';
 
@@ -42,14 +43,7 @@ function safeEffort(requested: unknown): ChatEffort | undefined {
 
 /** Resuelve el cwd del cliente bajo FS_ROOT; si es inválido o no es dir → FS_ROOT. */
 function safeCwd(requested: unknown): string {
-  const abs = resolveSafe(requested);
-  if (!abs) return FS_ROOT;
-  try {
-    if (fs.statSync(abs).isDirectory()) return abs;
-  } catch {
-    /* no existe / sin permisos → raíz */
-  }
-  return FS_ROOT;
+  return resolveDirSafe(requested) ?? FS_ROOT;
 }
 
 /**
@@ -72,10 +66,26 @@ interface ClientMessage {
   requestId?: unknown;
   decision?: unknown;
   updatedInput?: unknown;
+  answers?: unknown;
   model?: unknown;
   mode?: unknown;
   effort?: unknown;
   workflows?: unknown;
+}
+
+/**
+ * Valida las respuestas de un `AskUserQuestion`: {pregunta: respuesta}, ambas
+ * strings no vacías. Devuelve null si la trama no tiene esa forma (nada de
+ * colar objetos raros dentro del input que ejecuta la tool).
+ */
+function safeAnswers(raw: unknown): Record<string, string> | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const out: Record<string, string> = {};
+  for (const [question, answer] of Object.entries(raw as Record<string, unknown>)) {
+    if (!question || typeof answer !== 'string' || !answer) return null;
+    out[question] = answer;
+  }
+  return Object.keys(out).length > 0 ? out : null;
 }
 
 export function handleChatConnection(
@@ -163,6 +173,13 @@ export function handleChatConnection(
         return;
       }
 
+      case 'cancel': {
+        const localId = asId(msg.localId);
+        if (!localId) return;
+        runtimeManager.get(sessionId).cancelQueued(localId);
+        return;
+      }
+
       case 'permission': {
         if (typeof msg.requestId !== 'string') return;
         const decision = msg.decision === 'allow' ? 'allow' : 'deny';
@@ -171,6 +188,14 @@ export function handleChatConnection(
             ? (msg.updatedInput as Record<string, unknown>)
             : undefined;
         runtimeManager.get(sessionId).resolvePermission(msg.requestId, decision, updatedInput);
+        return;
+      }
+
+      case 'answer': {
+        if (typeof msg.requestId !== 'string') return;
+        const answers = safeAnswers(msg.answers);
+        if (!answers) return;
+        runtimeManager.get(sessionId).resolveQuestion(msg.requestId, answers);
         return;
       }
 

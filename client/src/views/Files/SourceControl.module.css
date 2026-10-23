@@ -1,0 +1,564 @@
+/* Panel Source Control (DESIGN.md §8.1). Solo tokens --*; cero literales de
+   color salvo el scrim (negro con alfa, igual que FolderPicker). */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  /* Portal a <body>: por encima de la barra inferior (50) y el drawer (60). */
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(2px);
+  border: 0;
+  cursor: pointer;
+  animation: sc-scrim 0.18s var(--ease-out-strong);
+}
+
+.sheet {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  max-height: 85dvh;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  animation: sc-sheet 0.18s var(--ease-out-strong);
+}
+
+@keyframes sc-scrim {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes sc-sheet {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+/* Sin movimiento si el sistema lo pide (DESIGN.md §11 · §12). */
+@media (prefers-reduced-motion: reduce) {
+  .sheet {
+    animation: sc-scrim 0.12s linear;
+  }
+}
+
+/* ---------- Cabecera ---------- */
+
+.header {
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.headerMeta {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* Ruta del repo = dato técnico → mono, truncada por delante (DESIGN.md §2). */
+.repoPath {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+
+.close {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  margin: -8px -8px 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dim);
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.close:hover,
+.close:focus-visible {
+  color: var(--text);
+  background: var(--surface2);
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ---------- Rama ---------- */
+
+.branchRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.branchBtn {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface2);
+  color: var(--accent);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.branchBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.branchIcon {
+  color: var(--accent);
+}
+
+.branchName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.caret {
+  color: var(--faint);
+  font-size: 10px;
+}
+
+.counters {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+}
+
+.ahead {
+  color: var(--green);
+}
+
+.behind {
+  color: var(--blue);
+}
+
+.noUpstream {
+  color: var(--faint);
+  font-size: 11px;
+}
+
+.branchPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.branchList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.branchItem {
+  width: 100%;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dim);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.branchItem:hover:not(:disabled),
+.branchItem:focus-visible {
+  background: var(--surface2);
+  color: var(--text);
+}
+
+.branchItemCurrent {
+  color: var(--accent);
+  cursor: default;
+}
+
+.branchDot {
+  flex: none;
+  font-size: 9px;
+}
+
+.newBranch {
+  display: flex;
+  gap: 8px;
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+}
+
+.input:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* ---------- Bajar / Subir ---------- */
+
+.syncRow {
+  display: flex;
+  gap: 8px;
+}
+
+.syncBtn {
+  flex: 1;
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface2);
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.syncBtn:hover:not(:disabled),
+.syncBtn:focus-visible {
+  border-color: var(--accent);
+}
+
+.syncBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.tokenWarning {
+  margin: -4px 0 0;
+  font-size: 11px;
+  color: var(--yellow);
+}
+
+/* ---------- Listas de cambios ---------- */
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.groupHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.eyebrow {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--faint);
+}
+
+.groupAction {
+  min-height: 32px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dim);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.groupAction:hover:not(:disabled),
+.groupAction:focus-visible {
+  color: var(--accent);
+  background: var(--surface2);
+}
+
+.groupAction:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.fileList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.fileRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.fileRow:last-child {
+  border-bottom: 0;
+}
+
+.letter {
+  flex: none;
+  width: 14px;
+  text-align: center;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* Colores de estado (DESIGN.md §3 · §8.1) */
+.letterM {
+  color: var(--yellow);
+}
+.letterA {
+  color: var(--green);
+}
+.letterD {
+  color: var(--red);
+}
+.letterR {
+  color: var(--accent);
+}
+.letterU {
+  color: var(--blue);
+}
+.letterConflict {
+  color: var(--red);
+}
+
+.fileMeta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.fileName {
+  font-size: 13px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fileDir {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+
+.rowAction {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dim);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.rowAction:hover:not(:disabled),
+.rowAction:focus-visible {
+  color: var(--accent);
+  background: var(--surface2);
+}
+
+.rowAction:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.empty {
+  margin: 8px 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--faint);
+}
+
+.hint {
+  margin: 4px 0;
+  font-size: 12px;
+  color: var(--faint);
+}
+
+/* ---------- Commit ---------- */
+
+.commitBox {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.textarea {
+  width: 100%;
+  min-height: 56px;
+  max-height: 140px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  resize: vertical;
+}
+
+.textarea:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.primaryBtn {
+  min-height: 46px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.primaryBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.secondaryBtn {
+  flex: none;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface2);
+  color: var(--dim);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.secondaryBtn:hover:not(:disabled),
+.secondaryBtn:focus-visible {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.secondaryBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ---------- Tira de resultado ---------- */
+
+.result {
+  margin: 0;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  max-height: 4.5em;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.resultIdle {
+  display: none;
+}
+
+.resultOk {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface2);
+  color: var(--green);
+}
+
+.resultErr {
+  padding: 8px 10px;
+  border: 1px solid var(--red);
+  border-radius: 8px;
+  background: var(--surface2);
+  color: var(--red);
+}

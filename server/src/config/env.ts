@@ -52,6 +52,28 @@ if (!pushEnabled) {
   );
 }
 
+// --- GitHub (Source Control, DESIGN §8.1) ---------------------------------
+// Token para push/pull por HTTPS. Opcional: sin él, el panel de git sigue
+// funcionando en local (status/commit/ramas) y solo las operaciones de red
+// avisan de que falta. Se valida el formato porque el token viaja al
+// credential helper por env y un salto de línea rompería el protocolo de git.
+const githubTokenRaw = process.env.GITHUB_TOKEN?.trim() || undefined;
+let githubToken = githubTokenRaw;
+if (githubToken && !/^[\x21-\x7e]+$/.test(githubToken)) {
+  console.warn(
+    '[env] GITHUB_TOKEN contiene espacios o caracteres no imprimibles — IGNORADO (revísalo, probablemente se coló un salto de línea).'
+  );
+  githubToken = undefined;
+}
+if (!githubToken) {
+  console.warn('[env] GITHUB_TOKEN no definido — push/pull desde el panel de git DESACTIVADOS.');
+}
+
+// Identidad con la que firmar los commits creados desde PortaIDE. Opcional: si
+// falta, git usa la config del sistema (~/.gitconfig del usuario del backend).
+const gitAuthorName = process.env.GIT_AUTHOR_NAME?.trim() || undefined;
+const gitAuthorEmail = process.env.GIT_AUTHOR_EMAIL?.trim() || undefined;
+
 // --- Cookie de sesión -----------------------------------------------------
 // Secure por defecto en producción; en dev (http) debe ir a false o el
 // navegador descarta la cookie. Se puede forzar con COOKIE_SECURE.
@@ -117,6 +139,14 @@ export const env = {
   authPassword,
   /** Raíz navegable del filesystem (workspace por defecto). */
   fsRoot: process.env.FS_ROOT || '/home/kuoyii/servers',
+  /** Token de GitHub para push/pull (undefined = operaciones de red desactivadas).
+   *  NUNCA se envía al cliente ni se escribe en logs (CLAUDE.md §11). */
+  githubToken,
+  /** true si hay token utilizable (esto sí puede viajar al cliente). */
+  githubTokenPresent: Boolean(githubToken),
+  /** Nombre/email con los que firmar los commits (undefined = config del sistema). */
+  gitAuthorName,
+  gitAuthorEmail,
   /** Flag Secure de la cookie de sesión. */
   cookieSecure,
   /** Nombre de la cookie de sesión. */

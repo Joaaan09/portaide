@@ -135,6 +135,55 @@
   color: var(--red);
 }
 
+/* ---------- Techo por card: fila-botón "⋯ N líneas más" (DESIGN.md §6.7) ---------- */
+
+/* Cierra el bloque recortado y expande la card entera. Alineado con el contenido
+   de la card (no a ancho de pantalla) y SIN animación de altura: animar el reflow
+   de cientos de nodos es justo lo que se quiere evitar (DESIGN.md §11). */
+.moreLines {
+  display: block;
+  width: 100%;
+  text-align: left;
+  /* Objetivo táctil de 44px reales sin engordar el bloque: el área crece con el
+     padding vertical y se compensa con el margen negativo (DESIGN.md §11). */
+  padding-block: 13px;
+  margin-block: -4px 0;
+  padding-inline: 10px; /* mismo sangrado que .diffLine */
+  border: 0;
+  background: none;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  line-height: 18px;
+  color: var(--faint);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 0.14s ease;
+}
+
+.moreLines:hover {
+  color: var(--dim);
+}
+
+/* Anillo interior: la card recorta (overflow) y un offset positivo se perdería */
+.moreLines:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* En Bash el control ya vive dentro del padding de .bashOutput (superficie negra
+   propia; el texto se lee mejor sobre ella que sobre --surface) */
+.moreLinesBash {
+  padding-inline: 0;
+}
+
+/* Los bloques son destino programático del foco al expandir (tabIndex=-1): si el
+   navegador decide pintar el anillo, que sea el nuestro y no el del UA */
+.diff:focus-visible,
+.bashOutput:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
 /* Approve / Reject (mockup ~30px de alto → 40px táctiles, DESIGN.md §12;
    el ancho flex:1 completa un objetivo cómodo) */
 .actions {
@@ -202,6 +251,11 @@
   color: var(--red);
 }
 
+/* Cortado sin decisión del usuario (turno interrumpido): aviso, no rechazo */
+.statusInterrupted {
+  color: var(--yellow);
+}
+
 @keyframes statusIn {
   from {
     opacity: 0;
@@ -260,7 +314,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .approve,
-  .reject {
+  .reject,
+  .moreLines {
     transition: none;
   }
 

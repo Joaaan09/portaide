@@ -18,6 +18,7 @@ export const SEQ = {
   down: '\x1b[B',
   right: '\x1b[C',
   left: '\x1b[D',
+  del: '\x7f', // borrado hacia atrás (lo mismo que emite xterm al pulsar Backspace)
 } as const
 
 /**

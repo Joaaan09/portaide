@@ -16,6 +16,8 @@ interface HistoryEntry {
   open: boolean
   /** sessionId del engine asociado (si lo tiene): dedup contra el historial del servidor. */
   claudeSessionId?: string | null
+  /** Carpeta del proyecto a la que está anclada (null = nunca arrancó). */
+  cwd?: string | null
 }
 
 /** Fila del historial del ENGINE (transcript .jsonl de ~/.claude/projects, incl. VS Code). */
@@ -32,7 +34,7 @@ interface ChatHistoryProps {
   /** cwd del workspace activo: el historial del engine es POR PROYECTO. null = sin proyecto. */
   cwd: string | null
   onClose: () => void
-  onOpen: (meta: { id: string; title: string }) => void
+  onOpen: (meta: { id: string; title: string; cwd?: string | null }) => void
   /** Abre una conversación del engine (servidor) por su sessionId. */
   onOpenEngine: (id: string) => void
   onDelete: (id: string) => void
@@ -138,7 +140,7 @@ export default function ChatHistory({
   if (!open) return null
 
   const handleOpen = (entry: HistoryEntry) => {
-    onOpen({ id: entry.id, title: entry.title })
+    onOpen({ id: entry.id, title: entry.title, cwd: entry.cwd })
     onClose()
   }
 

@@ -10,7 +10,13 @@ import type {
   ChatSession,
   UserEditDecision,
 } from './types'
-import { chatStore, EFFORT_STEPS, MODEL_OPTIONS, type ConnStatus } from './chatStore'
+import {
+  chatStore,
+  EFFORT_STEPS,
+  isChatStarted,
+  MODEL_OPTIONS,
+  type ConnStatus,
+} from './chatStore'
 
 export interface ChatApi {
   sessions: ChatSession[]
@@ -33,12 +39,24 @@ export interface ChatApi {
   /** Borra de verdad una conversación (historial) y la quita de la tira si estaba abierta. */
   deleteSession: (id: string) => void
   /** Reabre una conversación del historial como pestaña, la activa y rehidrata su hilo. */
-  reopenSession: (meta: { id: string; title: string; claudeSessionId?: string | null }) => void
+  reopenSession: (meta: {
+    id: string
+    title: string
+    claudeSessionId?: string | null
+    cwd?: string | null
+  }) => void
   /** Renombra una conversación (optimista + PATCH best-effort). */
   renameSession: (id: string, title: string) => void
   /** Historial completo (scope=all) para el panel; NO entra en el snapshot. */
   fetchHistory: () => Promise<
-    Array<{ id: string; title: string; updatedAt: string; open: boolean; claudeSessionId?: string | null }>
+    Array<{
+      id: string
+      title: string
+      updatedAt: string
+      open: boolean
+      claudeSessionId?: string | null
+      cwd?: string | null
+    }>
   >
   /** Historial REAL del engine (~/.claude/projects) del proyecto abierto; POR PROYECTO (cwd). */
   fetchEngineHistory: (
@@ -46,12 +64,28 @@ export interface ChatApi {
   ) => Promise<Array<{ id: string; title: string; updatedAt: string; gitBranch: string | null; messageCount: number }>>
   /** Abre una conversación del engine (transcript .jsonl): la materializa, repinta y reanuda. */
   openEngineSession: (meta: { id: string; cwd: string | null }) => void
-  /** Envía un mensaje del usuario en la conversación activa (con el cwd del workspace). */
-  sendMessage: (text: string, cwd: string | null) => void
+  /** Envía un mensaje en la conversación activa (el cwd sale de su ancla de proyecto). */
+  sendMessage: (text: string) => void
+  /**
+   * Carpeta del proyecto de la conversación activa: su ancla, o el workspace
+   * activo si aún no la tiene (conversación sin estrenar). Es lo que pinta el
+   * chip del composer.
+   */
+  activeCwd: string | null
+  /** false si la conversación ya arrancó: el ancla queda congelada (chip no editable). */
+  canChangeCwd: boolean
+  /** Cambia la carpeta de una conversación aún no iniciada (chip del composer). */
+  setSessionCwd: (id: string, cwd: string) => void
+  /** Sincroniza el workspace activo como carpeta por defecto de los chats nuevos. */
+  setDefaultCwd: (cwd: string | null) => void
   /** Reintenta un mensaje marcado como no entregado (por su localId = id de la burbuja). */
   retryMessage: (localId: string) => void
   /** Approve/Reject real de una tool pendiente (manda permission_decision). */
   decide: (requestId: string, decision: UserEditDecision) => void
+  /** Responde una pregunta de Claude (`AskUserQuestion`): {pregunta: respuesta}. */
+  answerQuestion: (requestId: string, answers: Record<string, string>) => void
+  /** Retira de la cola un mensaje que aún no ha arrancado (por su localId). */
+  cancelQueued: (localId: string) => void
   setModel: (model: string) => void
   setPermissionMode: (mode: ChatPermissionMode) => void
   setEffort: (effort: ChatEffortSetting) => void
@@ -89,8 +123,14 @@ export function useChatSession(): ChatApi {
     fetchEngineHistory: chatStore.fetchEngineHistory,
     openEngineSession: chatStore.openEngineSession,
     sendMessage: chatStore.sendMessage,
+    activeCwd: activeSession.cwd ?? snap.defaultCwd,
+    canChangeCwd: !isChatStarted(activeSession),
+    setSessionCwd: chatStore.setSessionCwd,
+    setDefaultCwd: chatStore.setDefaultCwd,
     retryMessage: chatStore.retryMessage,
     decide: chatStore.decide,
+    answerQuestion: chatStore.answerQuestion,
+    cancelQueued: chatStore.cancelQueued,
     setModel: chatStore.setModel,
     setPermissionMode: chatStore.setPermissionMode,
     setEffort: chatStore.setEffort,

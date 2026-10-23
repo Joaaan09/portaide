@@ -119,7 +119,7 @@ export async function createSession(title: string, cwd: string | null): Promise<
  * localmente y materializa la fila en el PRIMER PATCH (sin usar POST), así que
  * esta operación SIEMPRE deja la fila (no hay 404):
  * - Si NO existe → INSERT con defaults (title ?? 'new chat', claudeSessionId ??
- *   null, cwd null, thread ?? null, open ?? true, created_at = updated_at = now).
+ *   null, cwd ?? null, thread ?? null, open ?? true, created_at = updated_at = now).
  * - Si existe → UPDATE PARCIAL: SÓLO los campos presentes en `patch` (via
  *   `excluded.*`) + siempre `updated_at`. Los ausentes se conservan.
  * `thread` se serializa a JSON; `open` a 0/1. INSERT ... ON CONFLICT DO UPDATE
@@ -130,6 +130,8 @@ export async function upsertSession(
   patch: {
     title?: string;
     claudeSessionId?: string | null;
+    /** Carpeta del proyecto de la conversación (ancla; ver chat/runtime.ts). */
+    cwd?: string | null;
     thread?: unknown[];
     open?: boolean;
   }
@@ -142,7 +144,7 @@ export async function upsertSession(
     id,
     title: patch.title ?? 'new chat',
     claude_session_id: patch.claudeSessionId ?? null,
-    cwd: null as string | null,
+    cwd: patch.cwd ?? null,
     thread: patch.thread !== undefined ? JSON.stringify(patch.thread) : null,
     open: patch.open === undefined ? 1 : patch.open ? 1 : 0,
     created_at: now,
@@ -155,6 +157,7 @@ export async function upsertSession(
   if (patch.claudeSessionId !== undefined) {
     sets.push('claude_session_id = excluded.claude_session_id');
   }
+  if (patch.cwd !== undefined) sets.push('cwd = excluded.cwd');
   if (patch.thread !== undefined) sets.push('thread = excluded.thread');
   if (patch.open !== undefined) sets.push('open = excluded.open');
   sets.push('updated_at = excluded.updated_at');
