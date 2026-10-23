@@ -564,3 +564,12 @@ en `api/client.ts`; Editor pinta imágenes con `<ImagePreview>` desde `/raw` (+ 
 Verificado: typecheck + build verdes; harness de runtime 19/19 (MIME y bytes exactos, zip con estructura
 anidada vía `unzip`, traversal bloqueado, tope inline vs descarga sin tope). Sin commit. Nota: el server
 estaba instalado en modo prod (sin devDeps) → `npm install --include=dev` para compilar.
+
+## 2026-10-23 (cont.) — Deploy de la feature FS
+
+Commit `3da5116` en staging + push a origin/staging (snapshot: incluye la WIP previa sin commitear —
+Source Control §8.1 y techo de render §6.7). Frontend redeployado por Docker (portaide-frontend Up con
+bundle nuevo; cae también el rebuild pendiente de la 17ª). Backend reiniciado vía proceso DETACHED
+(`kill -TERM` al PID del backend; systemd Restart=always respawnea con el dist nuevo) porque la sesión
+corría dentro del propio backend y sudo pide contraseña. QA en iPhone pendiente (abrir/descargar imagen,
+descargar carpeta zip).

@@ -6,8 +6,15 @@
 
 ## 18ª sesión (2026-10-23) — FS: ver imágenes inline + descargar archivos y carpetas (zip)
 
-**Modo Directo** (sin subagentes; el usuario respondió "No" al botón rojo). **Sin commit.** Build +
-typecheck verdes; verificación de runtime 19/19 sobre el router compilado.
+**Modo Directo** (sin subagentes; el usuario respondió "No" al botón rojo). **Commiteado y desplegado.**
+Build + typecheck verdes; verificación de runtime 19/19 sobre el router compilado.
+
+**Deploy (2026-10-23):** commit `3da5116` en `staging` + **push a `origin/staging`** (snapshot que además
+consolidó la WIP previa sin commitear: Source Control §8.1 y techo de render §6.7). **Frontend
+redeployado** por Docker (`docker compose up -d --build frontend`, `portaide-frontend` Up con bundle nuevo).
+**Backend reiniciado** vía proceso detached (`kill -TERM` al PID del backend; systemd `Restart=always` lo
+respawnea con el `dist` nuevo) — necesario porque esta sesión corre DENTRO del backend y `sudo systemctl`
+pide contraseña (restricción "PortaIDE no puede desplegarse a sí misma", ahora en modelo host).
 
 **Pedido:** ver imágenes desde la app, poder descargarlas, y poder descargar carpetas enteras del proyecto.
 
@@ -37,9 +44,10 @@ imagen, zip válido con estructura anidada (`unzip -l`), traversal bloqueado en 
 `tsx`, `@types/*`). Hubo que `npm install --include=dev` en `server/` para typecheck/build. En el VPS real
 el despliegue instala prod; las devDeps solo hacen falta para compilar.
 
-**Pendiente / siguiente:** no se ha commiteado nada (sigue la deuda de la 17ª, abajo). Si se despliega,
-`archiver` entra como dep de producción (ya en `package.json`). Falta probar en el móvil real (PWA iOS):
-abrir una imagen, descargarla, y descargar una carpeta grande (zip en streaming).
+**Pendiente / siguiente:** **QA en el iPhone (PWA)** tras el reinicio del backend — abrir una imagen,
+descargarla, y descargar una carpeta grande (zip en streaming). La deuda de la 17ª (rebuild del frontend)
+queda SALDADA con este deploy. Nota: el reinicio del backend lo disparó un proceso detached, así que esta
+sesión de chat se cortó en ese momento (reconexión de la PWA esperada).
 
 ---
 
