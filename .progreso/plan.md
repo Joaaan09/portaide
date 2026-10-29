@@ -124,6 +124,16 @@
 - [ ] **QA en el iPhone**
 - [ ] v2 opcional: capa de texto del PDF (seleccionar/copiar, enlaces); vista previa de Markdown
 
+## Editor — pasar de imagen sin volver a Files (2026-10-29)
+
+> Pedido del usuario. DESIGN §7.1 + ADR 2026-10-29 en `decisiones.md`.
+
+- [x] `ImageViewer`: imágenes de la misma carpeta, swipe + barra `n / N ‹ ›` + flechas, precarga ±1
+- [x] `replaceFile` en `OpenFilesProvider` (la pestaña se mueve; sin duplicados)
+- [x] Verificación: typecheck + build + E2E Chromium móvil 31/31
+- [ ] Commit + deploy del frontend (pendiente de OK del usuario)
+- [ ] **QA en el iPhone**: swipe con el pulgar (umbrales), precarga con fotos reales (HEIC/JPG grandes)
+
 ## Pendientes abiertos (2026-07-26)
 
 - [ ] **QA del push en el iPhone** — la cadena servidor→Apple está verificada (suscripción registrada y

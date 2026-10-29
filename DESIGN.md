@@ -479,6 +479,15 @@ El Editor es también el **visor** cuando el archivo abierto no es texto:
   Spinner `--accent` mientras carga; si no se puede mostrar (muy grande, formato no soportado por el
   WebView) cae a un estado sobrio con botón de descarga. En la **cabecera**, en lugar del botón `Guardar`,
   un botón **`⤓ Descargar`** (molde de `.save` pero neutro, `--dim` → `--text`/`--accent` al enfocar).
+- **Pasar de imagen** (añadido 2026-10-29): sin volver a Files, a la anterior/siguiente **de la misma
+  carpeta** (orden del explorer; sin bucle: en los extremos se detiene). Tres vías: **swipe horizontal**
+  en el escenario (la imagen sigue al dedo; en un extremo, resistencia ×0.25; se confirma pasando ~22 %
+  del ancho (máx. 90px) o con un *flick*; si no, vuelve a su sitio en `200ms --ease-out-strong`), la
+  **barra del visor** (§7.2) con `3 / 12` + botones **`‹` `›`** (solo si la carpeta tiene >1 imagen) y
+  las **flechas ←/→** del teclado. La pestaña **se mueve** por la carpeta (no abre una por imagen). La
+  nueva entra desde el lado del gesto (`translateX(±28px)` + fade, `200ms --ease-out-strong`; con
+  reduced-motion solo fade). Se precargan la anterior y la siguiente para que el paso sea instantáneo. El
+  escenario es zona `data-ptr="off"` (un swipe en diagonal no dispara el pull-to-refresh).
 - **Binario no-imagen** (la lectura devuelve 415): estado centrado `▢ · archivo binario · no se puede
   editar` + botón `⤓ Descargar`. Nunca el error genérico de carga.
 - **Descarga**: siempre vía `GET /api/fs/download` (componente `DownloadLink`): un archivo se baja tal

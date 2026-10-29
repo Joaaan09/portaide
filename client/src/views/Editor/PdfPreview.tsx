@@ -285,7 +285,7 @@ export default function PdfPreview({ path }: { path: string }) {
           <span className={styles.barNum}>{current}</span>
           <span className={styles.barFaint}> / {pdf.numPages}</span>
         </span>
-        <div className={styles.zoom}>
+        <div className={styles.barGroup}>
           <button
             type="button"
             className={styles.barBtn}

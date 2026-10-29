@@ -14,7 +14,6 @@ import {
   isImagePath,
   isPdfPath,
   isHtmlPath,
-  fsRawUrl,
 } from '../../api/client'
 import { useOpenFiles } from '../../openfiles/OpenFilesProvider'
 import DownloadLink from '../../components/DownloadLink/DownloadLink'
@@ -22,6 +21,7 @@ import CodeArea, { type CodeAreaHandle } from './CodeArea'
 import EditorTabs from './EditorTabs'
 import SymbolBar from './SymbolBar'
 import PdfPreview from './PdfPreview'
+import ImageViewer from './ImageViewer'
 import HtmlPreview from './HtmlPreview'
 import { basename, errText } from './fsText'
 import styles from './EditorView.module.css'
@@ -36,50 +36,6 @@ type HtmlMode = 'code' | 'preview'
 
 /** Archivos que solo se VEN (visor propio desde /raw), nunca se leen como texto. */
 const isMediaPath = (p: string): boolean => isImagePath(p) || isPdfPath(p)
-
-/**
- * Previsualización de imagen (DESIGN.md §7). Carga el archivo crudo vía
- * /api/fs/raw (la cookie de sesión viaja sola). Spinner mientras carga; si la
- * imagen no se puede mostrar (muy grande, formato no soportado por el WebView),
- * cae a un estado sobrio con botón de descarga. Estado propio por `key={path}`.
- */
-function ImagePreview({ path }: { path: string }) {
-  const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
-  return (
-    <div className={styles.imageStage}>
-      {state === 'error' ? (
-        <div className={styles.overlay}>
-          <p className={styles.overlayText}>no se pudo mostrar la imagen</p>
-          <DownloadLink
-            className={styles.retry}
-            path={path}
-            name={basename(path)}
-            ariaLabel={`Descargar ${basename(path)}`}
-          >
-            ⤓ Descargar
-          </DownloadLink>
-        </div>
-      ) : (
-        <>
-          {state === 'loading' && (
-            <div className={styles.overlay}>
-              <span className={styles.spinner} aria-hidden="true" />
-              <p className={styles.overlayText}>cargando {basename(path)}…</p>
-            </div>
-          )}
-          <img
-            className={styles.image}
-            src={fsRawUrl(path)}
-            alt={basename(path)}
-            onLoad={() => setState('ready')}
-            onError={() => setState('error')}
-            style={state === 'loading' ? { visibility: 'hidden' } : undefined}
-          />
-        </>
-      )}
-    </div>
-  )
-}
 
 /** Devuelve el record sin las claves que ya no están abiertas (misma ref si no cambia). */
 function pruneRecord<T>(rec: Record<string, T>, keep: Set<string>): Record<string, T> {
@@ -119,7 +75,7 @@ function Breadcrumb({ path }: { path: string }) {
 }
 
 export default function EditorView() {
-  const { files, activePath, closeFile, setActive } = useOpenFiles()
+  const { files, activePath, closeFile, setActive, replaceFile } = useOpenFiles()
 
   // Cache por ruta (no dispara render): contenido vivo + baseline guardado en disco.
   const contentRef = useRef<Map<string, string>>(new Map())
@@ -168,7 +124,7 @@ export default function EditorView() {
 
   // Carga perezosa: la primera vez que un archivo se vuelve activo. Imágenes y
   // PDFs NO se leen como texto (readFile los rechazaría con 415): se marcan como
-  // solicitados y los pinta su visor (<ImagePreview>/<PdfPreview>) desde /raw.
+  // solicitados y los pinta su visor (<ImageViewer>/<PdfPreview>) desde /raw.
   useEffect(() => {
     if (!activePath) return
     if (requestedRef.current.has(activePath)) return
@@ -364,7 +320,9 @@ export default function EditorView() {
         role="tabpanel"
         aria-label={active ? `${showCode ? 'Editando' : 'Viendo'} ${basename(active)}` : 'Editor'}
       >
-        {active && activeIsImage && <ImagePreview key={active} path={active} />}
+        {active && activeIsImage && (
+          <ImageViewer path={active} onNavigate={(to) => replaceFile(active, to)} />
+        )}
         {active && activeIsPdf && <PdfPreview key={active} path={active} />}
         {active && activePreview && (
           <HtmlPreview

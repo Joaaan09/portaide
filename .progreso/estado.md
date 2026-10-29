@@ -2,7 +2,30 @@
 
 > Léeme al empezar. Actualízame al terminar cada sesión.
 
-**Última actualización:** 2026-10-29 (21ª sesión; la 20ª corrió en paralelo)
+**Última actualización:** 2026-10-29 (22ª sesión)
+
+## 22ª sesión (2026-10-29) — Editor: pasar de imagen sin volver a Files
+
+**Modo Directo** (pedido: "cuando estoy viendo imágenes … poder pasarlas fácilmente"). En `staging`,
+**sin commit ni deploy** (pendiente de OK del usuario).
+
+**Hecho:**
+- **`client/src/views/Editor/ImageViewer.tsx`** (nuevo; sustituye a `ImagePreview` de `EditorView`):
+  imágenes **de la misma carpeta** (orden del explorer, sin bucle). **Swipe horizontal** (la imagen sigue
+  al dedo, resistencia en extremos, confirma por distancia o flick), **barra `n / N ‹ ›`** (molde de la del
+  PDF; solo con >1 imagen) y **flechas ←/→**. Fetch → blob con **precarga** de anterior/siguiente (LRU 5).
+  Entrada direccional de 200 ms (reduced-motion: solo fade). Escenario `data-ptr="off"`.
+- **`OpenFilesProvider.replaceFile(from, to)`**: la pestaña se mueve por la carpeta (sin duplicados).
+- CSS: `.imageStage` pasa a flex bajo la barra + `.imageSlide` (lo que se desliza); `.zoom` del PDF →
+  `.barGroup` genérico; `.barBtnNav` (44px, glifo 20px). DESIGN §7.1 ampliado; ADR en `decisiones.md`.
+
+**Verificación:** typecheck + build verdes; **E2E Chromium móvil 31/31** (toque real por CDP; harness en
+el scratchpad de la sesión, receta = la de la 21ª). Capturas revisadas.
+
+**Pendiente / siguiente:** OK del usuario → commit en `staging` + `docker compose up -d --build frontend`
+(no toca backend). **QA en el iPhone**: umbrales del swipe con el pulgar y fotos reales grandes/HEIC.
+
+---
 
 ## 21ª sesión (2026-10-29) — Editor: visor de PDF + vista previa de HTML
 

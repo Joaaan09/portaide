@@ -317,16 +317,17 @@
 
 /* ---------- Previsualización de imagen (DESIGN.md §7) ---------- */
 
-/* Escenario de la imagen: ocupa el stage, centra y encuadra con un fondo de
-   damero sutil para distinguir transparencias (PNG/SVG) del fondo de la app. */
+/* Escenario de la imagen: rellena el visor bajo su barra y encuadra con un fondo
+   de damero sutil para distinguir transparencias (PNG/SVG) del fondo de la app.
+   Es zona de swipe horizontal (§7.1): el vertical se lo queda el navegador. */
 .imageStage {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-  overflow: auto;
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
   background-color: var(--bg);
   background-image:
     linear-gradient(45deg, var(--surface) 25%, transparent 25%),
@@ -341,6 +342,51 @@
     -9px 0;
 }
 
+/* Lo que se desliza: la imagen (o su estado) sobre el damero fijo. Durante el
+   arrastre el transform lo pone JS sin transición; al soltar, vuelve con ella. */
+.imageSlide {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  transition: transform 0.2s var(--ease-out-strong);
+}
+
+.imageSlide[data-dragging] {
+  transition: none;
+}
+
+/* Entrada tras pasar de imagen: desde el lado del gesto. */
+.imageSlide[data-enter='next'] {
+  animation: slideInNext 0.2s var(--ease-out-strong);
+}
+
+.imageSlide[data-enter='prev'] {
+  animation: slideInPrev 0.2s var(--ease-out-strong);
+}
+
+@keyframes slideInNext {
+  from {
+    opacity: 0;
+    transform: translateX(28px);
+  }
+}
+
+@keyframes slideInPrev {
+  from {
+    opacity: 0;
+    transform: translateX(-28px);
+  }
+}
+
+@keyframes slideFade {
+  from {
+    opacity: 0;
+  }
+}
+
 /* La imagen nunca desborda el stage; conserva proporción. */
 .image {
   max-width: 100%;
@@ -349,6 +395,11 @@
   border-radius: 6px;
   /* Separa la imagen del damero sin pintar un borde duro */
   box-shadow: 0 0 0 1px var(--border);
+}
+
+/* Oculta hasta que decodifica (el spinner del slide ocupa su sitio). */
+.image[data-hidden] {
+  visibility: hidden;
 }
 
 /* Glifo del estado "archivo binario" */
@@ -523,5 +574,15 @@
   .spinner,
   .spinnerSm {
     animation: none;
+  }
+
+  /* Pasar de imagen: sin desplazamiento, solo fade (el arrastre sigue al dedo). */
+  .imageSlide {
+    transition: none;
+  }
+
+  .imageSlide[data-enter='next'],
+  .imageSlide[data-enter='prev'] {
+    animation: slideFade 0.15s ease;
   }
 }

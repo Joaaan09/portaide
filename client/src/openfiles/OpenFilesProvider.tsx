@@ -29,6 +29,10 @@ interface OpenFilesContextValue {
   closeFile: (path: string) => void
   /** Activa un archivo ya abierto (sin navegar). */
   setActive: (path: string) => void
+  /** Sustituye la pestaña `from` por `to` en su sitio y la activa (el visor de
+   *  imágenes pasa a la siguiente sin abrir una pestaña por imagen). Si `to` ya
+   *  estaba abierto en otra pestaña, esa se retira. */
+  replaceFile: (from: string, to: string) => void
 }
 
 const OpenFilesContext = createContext<OpenFilesContextValue | null>(null)
@@ -75,9 +79,20 @@ export function OpenFilesProvider({ children }: { children: ReactNode }) {
     setActivePath((current) => current === path ? current : path)
   }, [])
 
+  const replaceFile = useCallback((from: string, to: string) => {
+    if (from === to) return
+    setFiles((prev) => {
+      if (!prev.some((f) => f.path === from)) return prev
+      setActivePath(to) // idempotente (mismo patrón que closeFile)
+      return prev
+        .filter((f) => f.path !== to)
+        .map((f) => (f.path === from ? { path: to, name: basename(to) } : f))
+    })
+  }, [])
+
   const value = useMemo<OpenFilesContextValue>(
-    () => ({ files, activePath, openFile, closeFile, setActive }),
-    [files, activePath, openFile, closeFile, setActive]
+    () => ({ files, activePath, openFile, closeFile, setActive, replaceFile }),
+    [files, activePath, openFile, closeFile, setActive, replaceFile]
   )
 
   return <OpenFilesContext.Provider value={value}>{children}</OpenFilesContext.Provider>

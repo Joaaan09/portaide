@@ -1,4 +1,4 @@
-/* Visores del Editor: PDF y vista previa de HTML (DESIGN.md §7.2).
+/* Visores del Editor: PDF, vista previa de HTML y barra de imágenes (DESIGN.md §7.1–7.2).
    Overlays, spinner y botón de reintento se reutilizan de EditorView.module.css. */
 
 /* ---------- Conmutador Código / Vista (cabecera, solo .html) ---------- */
@@ -119,7 +119,15 @@
   outline-offset: -2px;
 }
 
-.zoom {
+/* ‹ › del visor de imágenes: el glifo mono es fino; más grande y 44px de ancho
+   (es el botón que se pulsa en ráfaga con el pulgar). */
+.barBtnNav {
+  min-width: 44px;
+  font-size: 20px;
+}
+
+/* Grupo de botones a la derecha de la barra (zoom del PDF, ‹ › de imágenes). */
+.barGroup {
   flex: none;
   display: flex;
   align-items: center;

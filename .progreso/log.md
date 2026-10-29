@@ -607,3 +607,6 @@ bundle nuevo; cae también el rebuild pendiente de la 17ª). Backend reiniciado 
 (`kill -TERM` al PID del backend; systemd Restart=always respawnea con el dist nuevo) porque la sesión
 corría dentro del propio backend y sudo pide contraseña. QA en iPhone pendiente (abrir/descargar imagen,
 descargar carpeta zip).
+- **2026-10-29 (22ª)** — Editor: pasar de imagen sin volver a Files. `ImageViewer` (swipe horizontal +
+barra `n / N ‹ ›` + flechas; imágenes de la misma carpeta; precarga ±1 como blobs) y `replaceFile` para que
+la pestaña se mueva. DESIGN §7.1 + ADR. Typecheck/build verdes, E2E Chromium móvil 31/31. Sin commit/deploy.

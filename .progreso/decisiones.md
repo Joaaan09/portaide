@@ -1288,6 +1288,34 @@ Verificación de runtime (19/19) con harness sobre el router compilado: MIME cor
 imagen, zip válido con estructura anidada (comprobado con `unzip -l`), traversal bloqueado, tope inline y
 descarga sin tope. `riesgo` heredado sin cambios: `resolveSafe` no sigue symlinks (aceptable en v1).
 
+### 2026-10-29 · Editor: pasar de imagen sin volver a Files (swipe + ‹ ›)
+
+**Qué.** El visor de imágenes navega por las imágenes **de la misma carpeta** (orden del backend =
+orden del explorer, sin bucle) con swipe horizontal, barra `n / N ‹ ›` y flechas ←/→. DESIGN §7.1.
+`ImagePreview` sale de `EditorView` a `ImageViewer.tsx`.
+
+**Decisiones.**
+- **La pestaña se mueve, no se abre una por imagen** (`replaceFile(from, to)` en `OpenFilesProvider`):
+  recorrer 30 fotos no debe dejar 30 pestañas. Si la destino ya estaba abierta en otra pestaña, esa se
+  retira (sin duplicados). Abrir desde Files sigue añadiendo pestaña como siempre.
+- **Carpeta, no "pestañas abiertas"**: es lo que espera quien viene de una galería; las pestañas solo
+  tendrían lo que ya abriste a mano.
+- **Fetch → blob + object URL con precarga de la anterior/siguiente** (LRU de 5: ventana ±1 + recientes).
+  `/fs/raw` responde `no-store`, así que un `new Image()` de precarga no garantiza reutilización en el
+  `<img>` (depende del memory cache de cada motor). El blob sí. Alternativa descartada: cambiar `/raw` a
+  `no-cache` + ETag (backend + reinicio, y aun así un 304 por paso). Coste: hasta 5 blobs en memoria
+  (≤25 MB cada uno por el tope de `/raw`); son bytes, no bitmaps decodificados.
+- **Gesto propio con pointer events** (sin lib): eje decidido a 10px, `touch-action: pan-y`, confirma
+  con distancia `min(90px, 22 % del ancho)` o flick ≥30px a **0,3 px/ms** medido en los últimos 100 ms
+  (umbral por defecto de Hammer.js; 0,5 dejaba fuera flicks reales). Ratón excluido (desktop usa ‹ › y
+  flechas). El escenario va con `data-ptr="off"` para que un swipe diagonal no arme el pull-to-refresh.
+- **Flechas a nivel documento** mientras el visor está montado (salvo foco en campos de texto o evento
+  ya consumido): tocar una pestaña la enfoca, y exigir el foco en el escenario dejaba el teclado muerto.
+
+**Verificación.** E2E en Chromium móvil (toque real vía CDP) 31/31: botones, flechas, swipe ←/→, swipe
+corto que vuelve, flick, extremos, gesto vertical ignorado, precarga sin re-descargas, carpeta de 1
+imagen sin barra, cambio de pestaña sin animación de paso y sin pestañas duplicadas.
+
 ## Pendientes de decidir (no inventar; preguntar o resolver en implementación)
 
 - **Ampliar `FS_ROOT`** a todo el servidor (montar `/home/kuoyii` o `/`, o backend en el host) si el
