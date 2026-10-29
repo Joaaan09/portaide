@@ -612,3 +612,7 @@ barra `n / N ‹ ›` + flechas; imágenes de la misma carpeta; precarga ±1 com
 la pestaña se mueva. DESIGN §7.1 + ADR. Typecheck/build verdes, E2E Chromium móvil 31/31. Sin commit/deploy.
 - **2026-10-29 (22ª, cierre)** — Commit `3e49139`, merge ff `staging → main`, redeploy del frontend
 (`docker compose up -d --build frontend`); smoke OK (bundle nuevo, health 200, API sin cookie 401). Sin push.
+- **2026-10-29 (23ª)** — Fix: abrir desde PortaIDE una conversación de Claude Code (VS Code) salía vacía.
+Causa: el hilo volvía en un PATCH >1 MB → 413 del nginx del frontend, ignorado por el cliente. Ahora el
+server la materializa (`POST /api/chat/engine/sessions/:id/open` + `seedFromEngine`), `client_max_body_size
+5m`. Typecheck/build verdes, E2E HTTP+WS 13/13 (transcript de 3,4 MB). Sin commit/deploy.

@@ -1568,52 +1568,33 @@ class ChatStore {
 
   /**
    * Abre una conversación del ENGINE (transcript `.jsonl` de ~/.claude/projects; p.ej.
-   * una de VS Code) como pestaña. Flujo: descarga el hilo ya convertido a LogEvent[] →
-   * lo MATERIALIZA en SQLite (upsert con thread + claudeSessionId, reusando el sessionId
-   * del engine como id de la pestaña → dedup natural) → la activa y attach para repintar.
-   * El `await` del PATCH es OBLIGATORIO: el runtime del server lee el hilo de SQLite en el
-   * `attach`, así que la fila tiene que existir ANTES de suscribirse. Reanuda con `resume`.
+   * una de VS Code) como pestaña. El SERVER convierte el transcript y lo MATERIALIZA
+   * (SQLite + runtime, reusando el sessionId del engine como id de pestaña → dedup
+   * natural); aquí solo se espera a que termine y se hace attach → el hilo llega en el
+   * snapshot. Antes el cliente descargaba el hilo y lo reenviaba en un PATCH: con
+   * transcripts >1 MB nginx respondía 413 y la pestaña se abría vacía sin aviso.
+   * Siempre se pide (también si la pestaña ya está en la tira): es idempotente y repara
+   * una pestaña vacía de un intento anterior. Reanuda con `resume`.
    */
   openEngineSession = async (meta: { id: string; cwd: string | null }): Promise<void> => {
     const { cwd } = meta
     if (!cwd) return
-    // Ya materializada como pestaña (abierta antes en esta sesión): basta activarla.
-    if (this.getSession(meta.id)) {
-      this.setActive(meta.id)
-      this.attach(meta.id)
-      return
-    }
-    let session: { id: string; title: string; claudeSessionId: string | null; thread: unknown[] }
+    let session: { id: string; title: string; claudeSessionId: string | null }
     try {
-      const r = await fetch(
-        `/api/chat/engine/sessions/${encodeURIComponent(meta.id)}?cwd=${encodeURIComponent(cwd)}`,
-        { credentials: 'include' },
-      )
+      const r = await fetch(`/api/chat/engine/sessions/${encodeURIComponent(meta.id)}/open`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        // Nació en ESTE proyecto (su transcript vive bajo ~/.claude/projects/<cwd>):
+        // se ancla desde el minuto uno, ya viene con hilo y no se puede mover.
+        body: JSON.stringify({ cwd }),
+      })
       if (!r.ok) return
       const data = (await r.json()) as {
-        session?: { id: string; title: string; claudeSessionId: string | null; thread: unknown[] }
+        session?: { id: string; title: string; claudeSessionId: string | null }
       }
       if (!data.session) return
       session = data.session
-    } catch {
-      return
-    }
-    // Materializa en SQLite ANTES de attach (el runtime lee el hilo de ahí). Se espera.
-    try {
-      await fetch(`/api/chat/sessions/${encodeURIComponent(session.id)}`, {
-        method: 'PATCH',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: session.title,
-          claudeSessionId: session.claudeSessionId,
-          thread: session.thread,
-          // Nació en ESTE proyecto (su transcript vive bajo ~/.claude/projects/<cwd>):
-          // se ancla desde el minuto uno, ya viene con hilo y no se puede mover.
-          cwd,
-          open: true,
-        }),
-      })
     } catch {
       return
     }

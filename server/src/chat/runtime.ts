@@ -197,6 +197,40 @@ class SessionRuntime {
     this.scheduleBusyNotification();
   }
 
+  /**
+   * Siembra el hilo con el transcript de una conversación del ENGINE (abrir desde
+   * el historial una de VS Code/CLI). Pasa por el runtime, no por SQLite a pelo:
+   * si ya hay un runtime en memoria (p.ej. una pestaña vacía de un intento
+   * fallido), un upsert directo no lo vería y el `attach` seguiría sirviendo el
+   * hilo vacío. Solo siembra si el hilo está VACÍO y no hay turno vivo: con
+   * historia propia manda PortaIDE (nunca se machaca). Devuelve si sembró.
+   */
+  async seedFromEngine(seed: {
+    events: LogEvent[];
+    claudeSessionId: string;
+    cwd: string;
+    title: string;
+  }): Promise<boolean> {
+    await this.ensureLoaded();
+    if (this.events.length > 0 || this.isBusy() || this.queue.length > 0) return false;
+    this.events = seed.events;
+    this.claudeSessionId = seed.claudeSessionId;
+    this.cwd = seed.cwd;
+    this.title = seed.title;
+    // Se espera: la fila tiene que existir antes de que el cliente haga `attach`
+    // y de que el historial la liste (dedup contra el engine).
+    await upsertSession(this.id, {
+      thread: this.events,
+      claudeSessionId: seed.claudeSessionId,
+      cwd: seed.cwd,
+      title: seed.title,
+      open: true,
+    });
+    // Quien ya estuviera suscrito (esa pestaña vacía) recibe el hilo sembrado.
+    this.broadcast(this.snapshotFrame());
+    return true;
+  }
+
   // --- Aviso "sigue trabajando" (push) ---------------------------------------
   // El usuario se va (cierra la app, bloquea el móvil, se le cae el socket) con
   // el turno vivo → se le avisa. Con DEBOUNCE (env.pushWorkingDelayMs, ~20 s)

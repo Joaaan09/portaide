@@ -4,6 +4,35 @@
 
 ---
 
+### 2026-10-29 · Abrir una conversación del engine: la materializa el SERVER (revierte la alternativa descartada el 2026-08-01)
+
+**Bug (usuario):** "abro desde PortaIDE una conversación que era de Claude Code (VS Code) y no veo el
+historial". **Causa (verificada):** `openEngineSession` hacía GET del hilo y lo reenviaba en un PATCH; el
+nginx del frontend no fijaba `client_max_body_size` → **1 MB por defecto → 413** (probado contra el
+contenedor). El cliente no miraba `r.ok`, hacía `attach` igualmente → runtime sin fila → **pestaña vacía,
+sin aviso**. Muchas conversaciones reales pasan de 1 MB de hilo (hasta 3,4 MB en total-grind-stagging);
+las pequeñas sí se abrían (hay filas materializadas así en SQLite), por eso el fallo parecía aleatorio.
+
+**Decisión:** `POST /api/chat/engine/sessions/:id/open {cwd}` (sustituye al `GET …/engine/sessions/:id`,
+que se retira). El server convierte el transcript y lo siembra **a través del runtime**
+(`SessionRuntime.seedFromEngine`): upsert en SQLite (thread, `claudeSessionId`, cwd-ancla, título,
+`open`) + snapshot a quien ya estuviera suscrito. **Idempotente:** si el hilo ya tiene historia propia o
+hay turno vivo, no se toca (solo `open:true`; el título de la fila manda, respeta renames). El cliente
+solo espera el POST y hace `attach`; ya no tiene atajo "si la pestaña existe, solo activar", así que
+repara una pestaña vacía de un intento anterior.
+
+**Por qué por el runtime y no un upsert directo:** si ya hay un runtime en memoria (pestaña vacía de un
+intento fallido, `loaded=true`, 0 eventos), un upsert a SQLite no lo ve y el `attach` seguiría sirviendo
+el hilo vacío. **Además:** `client_max_body_size 5m` en `/api` (igual que `express.json` 5 MB), porque
+el mismo 413 mudo afectaba a cualquier body de 1–5 MB (p.ej. guardar en el Editor un archivo >1 MB).
+
+**Alternativa descartada:** solo subir el límite de nginx + mirar `r.ok`. Arregla el síntoma pero mantiene
+el hilo viajando dos veces por la red del móvil (bajada + subida de hasta varios MB) y el runtime cacheado
+sin enterarse. **Límite que sigue:** si el `.jsonl` crece por fuera (se sigue en VS Code) después de
+materializarlo, PortaIDE no lo relee (la fila ya tiene historia → no se re-siembra).
+
+---
+
 ### 2026-10-29 · Editor: visor de PDF (pdf.js) + vista previa de HTML (iframe sandbox + token)
 
 **Pedido:** "necesito poder previsualizar archivos como html y pdf".

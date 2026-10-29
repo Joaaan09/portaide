@@ -5,6 +5,7 @@
 import { Router } from 'express';
 import { resolveDirSafe, resolveSafe } from '../fs/paths.js';
 import { listEngineSessions, readEngineThread } from './engineHistory.js';
+import { runtimeManager } from './runtime.js';
 import {
   createSession,
   deleteSession,
@@ -28,21 +29,42 @@ chatRouter.get('/engine/sessions', (req, res) => {
   res.json({ sessions: listEngineSessions(abs) });
 });
 
-// --- GET /api/chat/engine/sessions/:id?cwd=<path> ------------------------
-// Transcript de UNA sesión del engine convertido a log de eventos (LogEvent[]),
-// listo para que el cliente lo repinte y se reanude con `resume` (claudeSessionId).
-chatRouter.get('/engine/sessions/:id', (req, res) => {
-  const abs = resolveSafe(req.query.cwd);
+// --- POST /api/chat/engine/sessions/:id/open  body {cwd} -----------------
+// Abre UNA sesión del engine como pestaña: convierte su transcript a LogEvent[]
+// y lo MATERIALIZA aquí mismo (SQLite + runtime), reusando el sessionId del
+// engine como id de pestaña (dedup natural) y como `resume`. El hilo NO viaja
+// al cliente y de vuelta: antes iba GET → PATCH con el hilo entero, y los
+// transcripts largos (>1 MB) chocaban con el límite de body de nginx (413) →
+// pestaña vacía sin aviso. Ahora el cliente solo hace `attach` (snapshot por WS).
+// Idempotente: si la pestaña ya tiene hilo propio, no se toca (solo se reabre).
+chatRouter.post('/engine/sessions/:id/open', async (req, res) => {
+  const body = (req.body ?? {}) as { cwd?: unknown };
+  // Es el ancla del proyecto: como en el PATCH, directorio existente bajo FS_ROOT.
+  const abs = resolveDirSafe(body.cwd);
   if (!abs) {
     res.status(400).json({ error: 'bad_cwd' });
     return;
   }
-  const session = readEngineThread(abs, req.params.id);
-  if (!session) {
+  const engine = readEngineThread(abs, req.params.id);
+  if (!engine) {
     res.status(404).json({ error: 'not_found' });
     return;
   }
-  res.json({ session });
+  const seeded = await runtimeManager.get(engine.id).seedFromEngine({
+    events: engine.thread,
+    claudeSessionId: engine.claudeSessionId,
+    cwd: abs,
+    title: engine.title,
+  });
+  let title = engine.title;
+  if (!seeded) {
+    await upsertSession(engine.id, { open: true });
+    // Ya era una pestaña: su título (quizá renombrado en PortaIDE) manda.
+    title = (await getSession(engine.id))?.title ?? title;
+  }
+  res.json({
+    session: { id: engine.id, title, claudeSessionId: engine.claudeSessionId, cwd: abs },
+  });
 });
 
 // --- GET /api/chat/sessions ----------------------------------------------

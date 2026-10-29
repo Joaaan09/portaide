@@ -2,7 +2,32 @@
 
 > Léeme al empezar. Actualízame al terminar cada sesión.
 
-**Última actualización:** 2026-10-29 (22ª sesión)
+**Última actualización:** 2026-10-29 (23ª sesión)
+
+## 23ª sesión (2026-10-29) — Fix: abrir conversaciones de Claude Code (VS Code) mostraba el hilo vacío
+
+**Modo Directo** (pedido: "cuando abro una conversación desde portaide que era de aquí claude code, no
+veo el historial"). En `staging`, **sin commit ni deploy** (pendiente de OK del usuario).
+
+**Causa:** el hilo del transcript viajaba al cliente y volvía en un PATCH; con >1 MB el nginx del
+frontend respondía **413** (default) y el cliente hacía `attach` igualmente → pestaña vacía sin aviso.
+**Fix** (ADR en `decisiones.md`): `POST /api/chat/engine/sessions/:id/open` — el server materializa vía
+`SessionRuntime.seedFromEngine` (idempotente, no machaca hilo propio, repinta suscriptores); se retira el
+`GET …/engine/sessions/:id`. Cliente: `openEngineSession` = POST pequeño + `attach`. `nginx.conf`:
+`client_max_body_size 5m` en `/api` (= Express).
+
+**Archivos:** `server/src/chat/{runtime,routes}.ts`, `client/src/views/Chat/chatStore.ts`,
+`client/nginx.conf`.
+
+**Verificación:** typecheck + build verdes; `nginx -t` OK con `nginx:alpine`; **E2E HTTP+WS 13/13** contra
+un backend aislado (puerto/BD/secreto propios) con el transcript real de 3,4 MB (3984 eventos, POST
+~1 s): pestaña ya suscrita recibe el hilo, attach nuevo completo, fila en SQLite, re-open idempotente que
+respeta el rename, 400/404/401 y GET antiguo retirado. Reproducido antes el 413 contra el contenedor real.
+
+**Pendiente / siguiente:** OK → commit + **deploy de AMBOS**: `npm run build` (ya hecho, `server/dist` al
+día) + `sudo systemctl restart portaide-backend` **y** `docker compose up -d --build frontend` (el cliente
+viejo llama al GET retirado → no abre nada; el nuevo necesita el POST: van juntos). QA en el iPhone con
+una conversación grande. Límite: lo que se siga en VS Code tras materializarla no se relee.
 
 ## 22ª sesión (2026-10-29) — Editor: pasar de imagen sin volver a Files
 
