@@ -610,3 +610,5 @@ descargar carpeta zip).
 - **2026-10-29 (22ª)** — Editor: pasar de imagen sin volver a Files. `ImageViewer` (swipe horizontal +
 barra `n / N ‹ ›` + flechas; imágenes de la misma carpeta; precarga ±1 como blobs) y `replaceFile` para que
 la pestaña se mueva. DESIGN §7.1 + ADR. Typecheck/build verdes, E2E Chromium móvil 31/31. Sin commit/deploy.
+- **2026-10-29 (22ª, cierre)** — Commit `3e49139`, merge ff `staging → main`, redeploy del frontend
+(`docker compose up -d --build frontend`); smoke OK (bundle nuevo, health 200, API sin cookie 401). Sin push.

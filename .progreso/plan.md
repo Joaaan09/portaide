@@ -131,7 +131,7 @@
 - [x] `ImageViewer`: imágenes de la misma carpeta, swipe + barra `n / N ‹ ›` + flechas, precarga ±1
 - [x] `replaceFile` en `OpenFilesProvider` (la pestaña se mueve; sin duplicados)
 - [x] Verificación: typecheck + build + E2E Chromium móvil 31/31
-- [ ] Commit + deploy del frontend (pendiente de OK del usuario)
+- [x] Commit `3e49139` + merge ff a `main` + deploy del frontend (2026-10-29; sin push)
 - [ ] **QA en el iPhone**: swipe con el pulgar (umbrales), precarga con fotos reales (HEIC/JPG grandes)
 
 ## Pendientes abiertos (2026-07-26)

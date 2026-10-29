@@ -6,8 +6,10 @@
 
 ## 22ª sesión (2026-10-29) — Editor: pasar de imagen sin volver a Files
 
-**Modo Directo** (pedido: "cuando estoy viendo imágenes … poder pasarlas fácilmente"). En `staging`,
-**sin commit ni deploy** (pendiente de OK del usuario).
+**Modo Directo** (pedido: "cuando estoy viendo imágenes … poder pasarlas fácilmente"). **Commiteado
+(`3e49139`), merge ff `staging → main` y frontend redeployado** (a petición del usuario). **Sin push.**
+Smoke por el nginx del frontend: bundle nuevo `index-CKNX99yn.js` con el visor, `/api/health` 200,
+`/api/fs/context` sin cookie 401. Backend no se tocó.
 
 **Hecho:**
 - **`client/src/views/Editor/ImageViewer.tsx`** (nuevo; sustituye a `ImagePreview` de `EditorView`):
@@ -22,8 +24,9 @@
 **Verificación:** typecheck + build verdes; **E2E Chromium móvil 31/31** (toque real por CDP; harness en
 el scratchpad de la sesión, receta = la de la 21ª). Capturas revisadas.
 
-**Pendiente / siguiente:** OK del usuario → commit en `staging` + `docker compose up -d --build frontend`
-(no toca backend). **QA en el iPhone**: umbrales del swipe con el pulgar y fotos reales grandes/HEIC.
+**Pendiente / siguiente:** **QA en el iPhone**: umbrales del swipe con el pulgar y fotos reales
+grandes/HEIC. Push de `staging`/`main` cuando el usuario lo pida. Propuesto (sin hacer): recortar este
+`estado.md` (~49 KB, acumula sesiones) a una foto del ahora.
 
 ---
 
