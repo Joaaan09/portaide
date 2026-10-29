@@ -6,6 +6,8 @@ import { promises as fsp, createReadStream } from 'node:fs';
 import path from 'node:path';
 import archiver from 'archiver';
 import { FS_ROOT, resolveSafe } from './paths.js';
+import { mimeFor } from './mime.js';
+import { createPreviewGrant } from './preview.js';
 
 export const fsRouter = Router();
 
@@ -22,36 +24,6 @@ interface FsEntry {
   name: string;
   type: 'dir' | 'file';
   size?: number;
-}
-
-// Content-Type por extensión para servir archivos crudos (vista de imágenes y
-// descargas). Lo que no esté aquí sale como octet-stream → el navegador lo
-// descarga en vez de intentar interpretarlo.
-const MIME_BY_EXT: Record<string, string> = {
-  png: 'image/png',
-  jpg: 'image/jpeg',
-  jpeg: 'image/jpeg',
-  gif: 'image/gif',
-  webp: 'image/webp',
-  svg: 'image/svg+xml',
-  avif: 'image/avif',
-  bmp: 'image/bmp',
-  ico: 'image/x-icon',
-  heic: 'image/heic',
-  heif: 'image/heif',
-  pdf: 'application/pdf',
-  txt: 'text/plain; charset=utf-8',
-};
-
-/** Extensión en minúsculas de un nombre de archivo ('a.PNG' → 'png'). */
-function extOf(name: string): string {
-  const dot = name.lastIndexOf('.');
-  return dot >= 0 ? name.slice(dot + 1).toLowerCase() : '';
-}
-
-/** MIME por extensión, con fallback a octet-stream (fuerza descarga). */
-function mimeFor(name: string): string {
-  return MIME_BY_EXT[extOf(name)] ?? 'application/octet-stream';
 }
 
 /**
@@ -206,6 +178,9 @@ fsRouter.get('/raw', async (req, res) => {
     res.setHeader('Content-Length', String(stat.size));
     res.setHeader('Content-Disposition', contentDisposition(path.basename(abs), 'inline'));
     res.setHeader('X-Content-Type-Options', 'nosniff');
+    // Si alguien abre /raw suelto (p.ej. un .svg con <script>), que no corra
+    // en el origen de la app. No afecta a <img> ni al fetch del visor de PDF.
+    res.setHeader('Content-Security-Policy', 'sandbox');
     res.setHeader('Cache-Control', 'no-store'); // los archivos cambian: nunca cachear
     const stream = createReadStream(abs);
     stream.on('error', () => {
@@ -218,6 +193,34 @@ fsRouter.get('/raw', async (req, res) => {
     const { status, error } = fsErrorStatus(err);
     res.status(status).json({ error });
   }
+});
+
+// --- POST /api/fs/preview {path} ------------------------------------------
+// Abre una vista previa de un .html (DESIGN.md §7.2): devuelve la URL tokenizada
+// que el cliente carga en un <iframe sandbox>. Ver preview.ts (por qué token).
+fsRouter.post('/preview', async (req, res) => {
+  const abs = resolveSafe((req.body as { path?: unknown } | undefined)?.path);
+  if (!abs) {
+    res.status(400).json({ error: 'path_outside_root' });
+    return;
+  }
+  if (!/\.html?$/i.test(abs)) {
+    res.status(400).json({ error: 'not_html' });
+    return;
+  }
+  try {
+    const stat = await fsp.stat(abs);
+    if (!stat.isFile()) {
+      res.status(400).json({ error: 'not_a_file' });
+      return;
+    }
+  } catch (err) {
+    const { status, error } = fsErrorStatus(err);
+    res.status(status).json({ error });
+    return;
+  }
+  const token = createPreviewGrant(path.dirname(abs));
+  res.json({ url: `/api/preview/${token}/${encodeURIComponent(path.basename(abs))}` });
 });
 
 // --- GET /api/fs/download?path= ------------------------------------------

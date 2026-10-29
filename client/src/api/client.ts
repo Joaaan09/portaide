@@ -96,6 +96,12 @@ export interface FsReadResult {
 /** Codifica una ruta para meterla en el query string. */
 const q = (path: string): string => encodeURIComponent(path)
 
+/** Extensión en minúsculas de una ruta ('a/b.PDF' → 'pdf'; sin punto → ''). */
+function extOf(path: string): string {
+  const dot = path.lastIndexOf('.')
+  return dot < 0 ? '' : path.slice(dot + 1).toLowerCase()
+}
+
 /** Extensiones que tratamos como imagen previsualizable (vista Editor). */
 const IMAGE_EXTS = new Set([
   'png',
@@ -112,10 +118,15 @@ const IMAGE_EXTS = new Set([
 ])
 
 /** true si la ruta apunta a un formato de imagen que sabemos previsualizar. */
-export function isImagePath(path: string): boolean {
-  const dot = path.lastIndexOf('.')
-  if (dot < 0) return false
-  return IMAGE_EXTS.has(path.slice(dot + 1).toLowerCase())
+export const isImagePath = (path: string): boolean => IMAGE_EXTS.has(extOf(path))
+
+/** true si la ruta es un PDF (se pinta con el visor de pdf.js, no se lee como texto). */
+export const isPdfPath = (path: string): boolean => extOf(path) === 'pdf'
+
+/** true si la ruta es HTML (texto editable + vista previa en iframe sandbox). */
+export const isHtmlPath = (path: string): boolean => {
+  const ext = extOf(path)
+  return ext === 'html' || ext === 'htm'
 }
 
 /** URL para servir un archivo CRUDO inline (p.ej. `<img src>`). Lleva la cookie
@@ -135,6 +146,11 @@ export const readFile = (path: string): Promise<FsReadResult> =>
 
 export const writeFile = (path: string, content: string): Promise<{ ok: boolean; bytes: number }> =>
   api.put<{ ok: boolean; bytes: number }>('/fs/write', { path, content })
+
+/** Abre una vista previa de un .html: URL tokenizada (lectura de SU carpeta,
+ *  caduca por inactividad) para cargarla en un <iframe sandbox>. */
+export const openHtmlPreview = (path: string): Promise<{ url: string }> =>
+  api.post<{ url: string }>('/fs/preview', { path })
 
 export const mkdir = (path: string): Promise<{ ok: boolean }> =>
   api.post<{ ok: boolean }>('/fs/mkdir', { path })

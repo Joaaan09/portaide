@@ -4,6 +4,40 @@
 
 ---
 
+2026-10-29 (**Commit único + deploy**) — A petición del usuario: un solo commit en `staging` con todo lo
+pendiente (visor PDF/HTML + guard cross-site, descargas PWA de la 19ª, explorer de la 20ª, pegar en
+Terminal). Sin push. Frontend redeployado por Docker; backend reiniciado (kill -TERM → systemd). Smoke OK
+por el nginx (health, preview 404 con token falso, 401 sin cookie, 403 cross-site). Falta QA en iPhone.
+
+2026-10-29 (**Editor: visor de PDF + vista previa de HTML**) — Petición: "necesito poder previsualizar
+archivos como html y pdf". **Modo Directo.** PDF con pdf.js (build legacy, carga perezosa, canvas por
+página con liberación de memoria, zoom por botones). HTML con segmented Código|Vista → `<iframe sandbox>`
+de origen opaco + token de capacidad para sus assets relativos (`server/src/fs/preview.ts`). Endurecido el
+borde: API y WS rechazan cross-site/`Origin: null` (`auth/site.ts`); `/raw` con CSP sandbox. Dep nueva
+`pdfjs-dist`. DESIGN §7.2 + ADR. **Verificado:** typecheck + build + E2E Chromium 45/45. **Sin commit ni
+deploy.** Falta QA en iPhone.
+
+2026-10-29 (**Fix: el explorer recuerda carpetas abiertas al cambiar de vista**) — Petición: "si abro una
+carpeta en Files, me voy a otra pestaña y vuelvo, la tengo cerrada". **Modo Directo.** Causa: AppShell
+desmonta la vista y la expansión vivía en `useState` del `TreeNode`. Fix: `views/Files/treeCache.ts` (estado
+de módulo: carpetas expandidas + último listado + scroll); el árbol se pinta al instante desde la caché y
+revalida en silencio; `FilesView` restaura el scroll. **Verificado:** typecheck + build verdes. DESIGN §8 y
+ADR 2026-10-29 al día. **Sin commit ni deploy.** Falta QA en iPhone.
+Mismo día, segundo fix: **no se podía pegar en la Terminal desde el móvil** (el textarea de xterm está
+oculto → sin menú "Pegar"). Tecla `paste` en la KeyBar: `clipboard.readText()` en el click → `term.paste()`
+(bracketed paste). Typecheck + build verdes. DESIGN §9 + ADR. Falta QA en iPhone.
+
+2026-10-27 (**Fix: descargar archivos/carpetas en la PWA de iOS**) — Petición: "descargar carpetas no hace
+nada" + "al descargar un archivo la app se queda atascada y hay que reabrirla". **Modo Directo** (bug fix
+acotado). Causa: la descarga era un `<a download>` que **navega la página**; en PWA `standalone` iOS el
+webview no tiene gestor de descargas ni botón atrás → carpeta (zip) se traga el toque, archivo deja la app
+atascada. Fix: componente `DownloadLink` + helper `api/download.ts` que **no navega**: fuera de la PWA deja
+el `<a download>` nativo (streaming); en standalone trae el recurso por `fetch` (misma cookie) y lo entrega
+por **Web Share API** ("Guardar en Archivos"), con spinner mientras carga. Se cablean Files (`FileTree`) y
+las 4 descargas del Editor. **Verificado:** typecheck + build verdes. DESIGN §7.1/§8 y ADR 2026-10-27 al
+día; compromiso (RAM del zip + transient activation) en `bugs.md`. **Sin commit ni deploy.** Falta QA en
+iPhone (PWA): descargar un archivo (no debe atascar la app) y una carpeta (hoja "Guardar en Archivos").
+
 2026-08-04 (**Source Control: git desde la UI**) — Petición: commit/push/pull sin terminal. **Modo Directo**
 (autorizado tras el protocolo del botón rojo). Se escribió **DESIGN §8.1** antes de tocar código. Backend
 nuevo `server/src/git/` (`service.ts` sobre el binario `git` con `execFile` + `--porcelain=v2 -z`;

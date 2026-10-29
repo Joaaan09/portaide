@@ -25,6 +25,9 @@ export interface TerminalHandle {
   focus: () => void
   /** Reajusta el tamaño al contenedor y notifica el resize al pty. */
   fit: () => void
+  /** Pega texto como un pegado real: xterm normaliza los saltos de línea y lo
+   *  envuelve en bracketed paste si la app lo pidió; sale por `onInput`. */
+  paste: (text: string) => void
 }
 
 interface TerminalPaneProps {
@@ -189,6 +192,7 @@ export default function TerminalPane({
     handleRef.current = {
       focus: () => termRef.current?.focus(),
       fit: () => fitAndResizeRef.current(),
+      paste: (text) => termRef.current?.paste(text),
     }
   }
 

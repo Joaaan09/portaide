@@ -2,8 +2,10 @@
 // expandirse (GET /api/fs/list de UNA carpeta) y los cachea. Los archivos, al
 // pulsarlos, se abren en el Editor vía useOpenFiles().openFile().
 import { useEffect, useState } from 'react'
-import { listDir, fsDownloadUrl, type FsEntry, ApiError } from '../../api/client'
+import { listDir, type FsEntry, ApiError } from '../../api/client'
 import { useOpenFiles } from '../../openfiles/OpenFilesProvider'
+import DownloadLink from '../../components/DownloadLink/DownloadLink'
+import { expandedDirs, listings } from './treeCache'
 import styles from './FilesView.module.css'
 
 // Colores de badge por extensión: excepción documentada en DESIGN.md §3
@@ -92,22 +94,17 @@ function GitMark({ letter }: { letter: string }) {
 // --- Acción de descarga (DESIGN.md §8) ------------------------------------
 
 /** Botón de descarga al final de cada fila. Archivo → el archivo tal cual;
- *  carpeta → un .zip generado al vuelo por el backend. Es un <a download>: la
- *  cookie de sesión viaja sola (mismo origen). Va fuera del botón de la fila
- *  (hermano, no anidado) para no romper la semántica ni el toque de abrir. */
+ *  carpeta → un .zip generado al vuelo por el backend. Delega en <DownloadLink>,
+ *  que fuera de la PWA descarga nativo y en standalone (iOS) lo hace sin navegar
+ *  la página (si no, la app se atasca / el botón no hace nada). Va fuera del
+ *  botón de la fila (hermano, no anidado) para no romper la semántica. */
 function DownloadAction({ path, name, type }: { path: string; name: string; type: 'dir' | 'file' }) {
-  const label =
-    type === 'dir' ? `Descargar la carpeta ${name} como zip` : `Descargar ${name}`
+  const label = type === 'dir' ? `Descargar la carpeta ${name} como zip` : `Descargar ${name}`
+  const saveName = type === 'dir' ? `${name}.zip` : name
   return (
-    <a
-      className={styles.dlBtn}
-      href={fsDownloadUrl(path)}
-      download
-      aria-label={label}
-      onClick={(e) => e.stopPropagation()}
-    >
+    <DownloadLink className={styles.dlBtn} path={path} name={saveName} ariaLabel={label}>
       <span aria-hidden="true">⤓</span>
-    </a>
+    </DownloadLink>
   )
 }
 
@@ -136,25 +133,39 @@ function TreeNode({ entry, parentPath, depth, marks }: TreeNodeProps) {
   const path = joinPath(parentPath, entry.name)
   const indent = { paddingLeft: `${depth * 14 + 10}px` }
 
-  const [expanded, setExpanded] = useState(false)
-  const [children, setChildren] = useState<FsEntry[] | null>(null)
+  // Expansión e hijos salen de treeCache: al volver de otra vista el árbol
+  // reaparece tal cual estaba, sin parpadeo de "cargando…".
+  const [expanded, setExpanded] = useState(() => expandedDirs.has(path))
+  const [children, setChildren] = useState<FsEntry[] | null>(() => listings.get(path) ?? null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Carga perezosa: solo al expandir por primera vez. `loading` NO va en las
-  // deps a propósito: si estuviera, setLoading(true) re-dispararía el efecto y
-  // su cleanup cancelaría el fetch en vuelo (los hijos nunca se pintarían).
+  const toggle = () => {
+    if (expanded) expandedDirs.delete(path)
+    else expandedDirs.add(path)
+    setExpanded(!expanded)
+  }
+
+  // Carga perezosa al expandir; si ya hay listado en caché se pinta y se
+  // revalida en silencio (recoge lo que haya creado/borrado el agente).
+  // `loading` y `children` NO van en las deps a propósito: setLoading(true)
+  // re-dispararía el efecto y su cleanup cancelaría el fetch en vuelo.
   useEffect(() => {
-    if (!expanded || children !== null) return
+    if (!expanded) return
     let cancelled = false
-    setLoading(true)
+    if (!listings.has(path)) setLoading(true)
     setError(null)
     listDir(path)
       .then((res) => {
-        if (!cancelled) setChildren(res.entries)
+        if (cancelled) return
+        listings.set(path, res.entries)
+        setChildren(res.entries)
       })
       .catch((err) => {
-        if (!cancelled) setError(errText(err))
+        if (cancelled) return
+        listings.delete(path)
+        setChildren(null)
+        setError(errText(err))
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -162,7 +173,7 @@ function TreeNode({ entry, parentPath, depth, marks }: TreeNodeProps) {
     return () => {
       cancelled = true
     }
-  }, [expanded, children, path])
+  }, [expanded, path])
 
   if (entry.type === 'file') {
     const isActive = activePath === path
@@ -194,7 +205,7 @@ function TreeNode({ entry, parentPath, depth, marks }: TreeNodeProps) {
           type="button"
           className={styles.row}
           style={indent}
-          onClick={() => setExpanded((v) => !v)}
+          onClick={toggle}
         >
           <span
             className={styles.chevron}
@@ -260,22 +271,26 @@ export default function FileTree({
   /** Estado git por ruta absoluta (DESIGN.md §8.1). Opcional: sin repo, no hay marcas. */
   marks?: Map<string, string>
 }) {
-  const [entries, setEntries] = useState<FsEntry[] | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [entries, setEntries] = useState<FsEntry[] | null>(() => listings.get(rootPath) ?? null)
+  const [loading, setLoading] = useState(() => !listings.has(rootPath))
   const [error, setError] = useState<string | null>(null)
 
-  // Recarga al cambiar el workspace.
+  // Carga al montar / cambiar de workspace; con caché, revalida en silencio.
   useEffect(() => {
     let cancelled = false
-    setLoading(true)
+    setLoading(!listings.has(rootPath))
     setError(null)
-    setEntries(null)
+    setEntries(listings.get(rootPath) ?? null)
     listDir(rootPath)
       .then((res) => {
-        if (!cancelled) setEntries(res.entries)
+        if (cancelled) return
+        listings.set(rootPath, res.entries)
+        setEntries(res.entries)
       })
       .catch((err) => {
-        if (!cancelled) setError(errText(err))
+        if (cancelled) return
+        listings.delete(rootPath)
+        setError(errText(err))
       })
       .finally(() => {
         if (!cancelled) setLoading(false)

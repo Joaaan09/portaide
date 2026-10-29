@@ -1,0 +1,31 @@
+/* Spinner del enlace de descarga mientras trae el recurso (DESIGN.md §7.1).
+   Tokens only (DESIGN.md §3). Keyframe propio para no depender del scope de
+   otros módulos. */
+.spinner {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  border: 2px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: dl-spin 0.7s linear infinite;
+}
+
+/* Fallo transitorio: tiñe el glifo en rojo (el detalle va en el title).
+   !important porque el color base lo pone la clase del sitio que lo usa, de
+   otro módulo, y el orden de la cascada entre módulos no está garantizado. */
+.failed {
+  color: var(--red) !important;
+}
+
+@keyframes dl-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
+}

@@ -89,6 +89,25 @@ export default function TerminalView() {
     setModifiers((m) => ({ ...m, [mod]: !m[mod] }))
   }, [])
 
+  // En el móvil no hay "Pegar" sobre la terminal (el textarea de xterm está
+  // oculto). readText() se llama dentro del click: iOS exige el gesto y muestra
+  // su burbuja "Pegar". Si el usuario la descarta, la promesa se rechaza: no-op.
+  const onPaste = useCallback((): void => {
+    const id = activeId
+    navigator.clipboard
+      .readText()
+      .then((text) => {
+        if (!text) return
+        // Un pegado no lleva modificadores: desármalos ANTES de que xterm emita
+        // el dato (onData es síncrono y handleInput lee el ref, no el estado).
+        modifiersRef.current = NO_MODS
+        clearMods()
+        handlesRef.current.get(id)?.paste(text)
+      })
+      .catch(() => {})
+      .finally(() => handlesRef.current.get(id)?.focus())
+  }, [activeId, clearMods])
+
   // --- Estado de conexión (patrón compartido, DESIGN.md §6.3) --------------
   // Los puntos de las pestañas usan la MISMA histéresis que la tira: `shownConn`
   // va por detrás de `conn` al caerse y al instante al recuperarse, así que un
@@ -143,6 +162,7 @@ export default function TerminalView() {
         onSeq={onSeq}
         onChar={onChar}
         onToggleMod={onToggleMod}
+        onPaste={onPaste}
       />
     </main>
   )

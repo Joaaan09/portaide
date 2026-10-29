@@ -112,6 +112,18 @@
 - [x] Verificación: typecheck + build + harness de runtime 19/19 (MIME/bytes, zip anidado, traversal)
 - [ ] **QA en el iPhone** (PWA): abrir imagen, descargarla, descargar carpeta grande (zip) + commit/deploy
 
+## Editor — visor de PDF + vista previa de HTML (2026-10-29)
+
+> Pedido del usuario. DESIGN §7.2 + ADR 2026-10-29 en `decisiones.md`.
+
+- [x] PDF con pdf.js (legacy, perezoso): páginas en canvas virtualizadas, zoom, indicador, errores
+- [x] HTML: Código | Vista, iframe sandbox + token de assets relativos (`/api/preview`)
+- [x] Guard cross-site en API y WS; CSP sandbox en `/raw`
+- [x] Verificación: typecheck + build + E2E Chromium 45/45
+- [x] Commit (único, con la WIP de otras sesiones) + deploy (2026-10-29)
+- [ ] **QA en el iPhone**
+- [ ] v2 opcional: capa de texto del PDF (seleccionar/copiar, enlaces); vista previa de Markdown
+
 ## Pendientes abiertos (2026-07-26)
 
 - [ ] **QA del push en el iPhone** — la cadena servidor→Apple está verificada (suscripción registrada y

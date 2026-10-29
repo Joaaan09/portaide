@@ -481,8 +481,41 @@ El Editor es también el **visor** cuando el archivo abierto no es texto:
   un botón **`⤓ Descargar`** (molde de `.save` pero neutro, `--dim` → `--text`/`--accent` al enfocar).
 - **Binario no-imagen** (la lectura devuelve 415): estado centrado `▢ · archivo binario · no se puede
   editar` + botón `⤓ Descargar`. Nunca el error genérico de carga.
-- **Descarga**: siempre vía `GET /api/fs/download` (`<a download>`): un archivo se baja tal cual, una
-  carpeta como **`.zip`** (ver §8). El tope de previsualización inline es 25 MB; la descarga no tiene tope.
+- **Descarga**: siempre vía `GET /api/fs/download` (componente `DownloadLink`): un archivo se baja tal
+  cual, una carpeta como **`.zip`** (ver §8). El tope de previsualización inline es 25 MB; la descarga no
+  tiene tope. **Comportamiento según entorno** (fix 2026-10-27, ADR en `.progreso/decisiones.md`): fuera de
+  la PWA es un `<a download>` nativo (streaming); **en PWA `standalone` (iOS)** NO se navega la página —el
+  webview no tiene gestor de descargas ni botón atrás, navegar atasca la app o traga el toque en silencio—:
+  se trae el recurso con `fetch` (misma cookie) y se entrega con la **Web Share API** ("Guardar en
+  Archivos"), con un **spinner `--accent`** mientras trabaja (el botón nunca queda mudo).
+
+### 7.2. Visor de PDF y vista previa de HTML (añadido 2026-10-29; ADR en `.progreso/decisiones.md`)
+
+- **Barra del visor** (común): fila fina bajo la cabecera, `min-height 40px`, `--surface` + borde inferior
+  1px; info a la izquierda en mono 11px (`--dim`, cifras tabulares), botones de 40px a la derecha (glifo
+  mono `--dim` → `--text`; `:active` `--surface2`; deshabilitado `--faint`).
+- **PDF**: no se lee como texto (como las imágenes); se pinta con **pdf.js** (carga perezosa, chunk aparte)
+  página a página en `<canvas>` sobre `--bg`, columna centrada con 12px de hueco. Nada de
+  `<iframe>`/`<embed>` (en el WebView de iOS solo enseñan la 1ª página). Barra: `3 / 12` (actual en
+  `--text`, total en `--faint`) y zoom **`− 100% +`** (pasos 100/125/150/200/300 % sobre "ajustar al
+  ancho"; tocar el % vuelve al 100). El zoom es por botones porque la PWA bloquea el *pinch*; al ampliar
+  hay scroll horizontal y se conserva el punto de lectura. Placeholder de página en `--surface` con su
+  número en `--faint` y el tamaño real (el scroll no salta); el papel blanco lo pone el propio PDF. Solo se
+  pintan las páginas cercanas al viewport y se libera el bitmap de las lejanas (límite de memoria de canvas
+  de iOS). Error (dañado, con contraseña, demasiado grande) → estado sobrio + `⤓ Descargar`. Sin capa de
+  texto en v1 (no se selecciona texto ni se siguen enlaces).
+- **HTML**: sigue siendo un archivo **editable**. En la cabecera, entre breadcrumb y `Guardar`, un
+  **segmented `Código | Vista`** (molde del segmented del composer: activo `--accent`/`--on-accent`, mono
+  11.5px, 34px de alto). Abre en **Código** por defecto; el modo se recuerda por pestaña. **Vista** = la
+  página renderizada en un `<iframe>` *sandbox* (origen opaco: su JS no toca la app ni la sesión) que carga
+  también sus CSS/JS/imágenes **relativos** (misma carpeta y subcarpetas). Muestra lo **guardado en disco**:
+  con cambios sin guardar la barra avisa en `--yellow` ("sin guardar · se ve lo de disco") y `Guardar`
+  recarga la vista; si no, `vista previa · aislada` en `--faint`. Botón `↻` para recargar (p.ej. tras
+  editar Claude el archivo). **Excepción a "cero literales"**: el iframe usa `color-scheme: light` +
+  `background: Canvas` (color de sistema, no literal) para que una página sin fondo propio se vea como en una
+  pestaña normal y no como texto negro sobre el `--bg` oscuro.
+- En visores (imagen, PDF, Vista de HTML) **no hay barra de símbolos** (solo sirve al teclear código); su
+  hueco inferior (barra de nav + safe-area) lo ocupa un separador `--surface` vacío.
 
 ## 8. Vista Files
 
@@ -491,12 +524,16 @@ El Editor es también el **visor** cuando el archivo abierto no es texto:
 - **Explorer**: label "EXPLORER" en `--faint`; filas de árbol con `chevron` (▾/▸) para carpetas,
   icono-badge para archivos, indentación por profundidad, marca git a la derecha (§3). Fila activa:
   fondo `--surface2` + borde-izquierdo 2px `--accent`.
+- **Continuidad al navegar** (2026-10-29): al volver a Files desde otra vista, el explorer reaparece
+  **igual que se dejó** — mismas carpetas abiertas y mismo scroll — pintado al instante (sin "cargando…")
+  y revalidado en segundo plano. Memoria de la sesión (no sobrevive a recargar la app).
 - **Acción de descarga por fila** (`⤓`, añadida 2026-10-23): cada fila lleva a la derecha un botón
   `⤓` discreto (opacidad .55, `--faint`; `--accent` + opacidad 1 al enfocar/tocar), **hermano** del
   botón de la fila (no anidado) para no romper la semántica ni el toque de abrir/plegar. Un **archivo**
   descarga el archivo tal cual; una **carpeta** descarga un **`.zip`** generado al vuelo por el backend
-  (`GET /api/fs/download`, `<a download>` → la cookie de sesión viaja sola). Es la vía para bajar carpetas
-  enteras del proyecto desde el móvil. Convive con la marca git (que queda a su izquierda).
+  (`GET /api/fs/download`, vía `DownloadLink` → la cookie de sesión viaja sola; comportamiento por entorno
+  en §7.1). Es la vía para bajar carpetas enteras del proyecto desde el móvil. Convive con la marca git
+  (que queda a su izquierda). Mientras descarga en standalone, el `⤓` se sustituye por un spinner.
 
 ### 8.1. Source Control — chip de rama + panel de git
 
@@ -564,7 +601,13 @@ Orden vertical, de arriba abajo:
 - **Pestañas** (p.ej. `zsh`, `claude`, `dev server`) con punto de estado (verde OK, acento = claude) + `+`.
 - **Salida**: mono, `line-height` 18, colores por tipo de línea (verde prompts/OK, rojo cambios/errores,
   `--text`/`--dim`/`--faint` según nivel). Prompt `❯` en `--green` con cursor `--accent` parpadeante.
-- **Barra de teclas especiales**: `esc tab ctrl alt ~ / | - ^C ↑ ↓ ← →`, celdas mono ~46px.
+- **Barra de teclas especiales**: `esc tab ctrl alt paste ~ / | - ^C ↑ ↓ ← →`, celdas mono ~46px.
+- **Tecla `paste`** (añadida 2026-10-29): en el móvil el área de escritura de xterm es un textarea oculto,
+  así que mantener pulsado **no** ofrece "Pegar". `paste` lee el portapapeles (`navigator.clipboard`; en
+  iOS aparece la burbuja "Pegar" del sistema, que el usuario confirma) y lo pega respetando *bracketed
+  paste* (un bloque multilínea no se ejecuta línea a línea). Va justo tras los modificadores para quedar
+  visible sin desplazar la barra; mismo chasis que el resto de teclas. Ignora los modificadores armados
+  (y los desarma). Si el navegador no expone la API (contexto no seguro), la tecla **no se pinta**.
 
 ### 9.1. Persistencia: estado de conexión y sesión terminada
 

@@ -4,6 +4,131 @@
 
 ---
 
+### 2026-10-29 · Editor: visor de PDF (pdf.js) + vista previa de HTML (iframe sandbox + token)
+
+**Pedido:** "necesito poder previsualizar archivos como html y pdf".
+
+**PDF → pdf.js en canvas, no `<iframe>`/`<embed>`.** El WebView de iOS (la PWA) pinta un PDF embebido como
+imagen de la **1ª página** y sin scroll; abrirlo "suelto" en standalone atasca la app (mismo problema que las
+descargas, ADR 2026-10-27). pdf.js lo pinta igual en todas partes. **Dep nueva `pdfjs-dist@^6.4.299`**:
+- **Build legacy**, no el moderno: el moderno de la v6 usa `Map#getOrInsertComputed` y `Promise.try` sin
+  polyfill (APIs de 2025-26 que el WebView de iOS puede no tener); el legacy las trae vía core-js.
+- **Carga perezosa** (`import()` al abrir el primer PDF): ~500 KB de librería + 1,2 MB de worker fuera del
+  bundle principal. Worker por **`?worker`** de Vite → se emite como `.js` clásico: el nginx del frontend no
+  mapea `.mjs` (saldría `octet-stream` y un worker de módulo no arrancaría).
+- Virtualización por memoria: iOS limita el total de canvas → solo se pintan las páginas a ±1,5 pantallas y
+  se libera el bitmap (0×0) de las lejanas; DPR tope 2 y tope de 8 Mpx por lienzo. Zoom por botones (la PWA
+  bloquea el pinch con `user-scalable=no`). El `engines` de pdfjs-dist pide Node ≥22, pero solo afecta a su
+  uso en Node: aquí se empaqueta para el navegador (npm solo avisa).
+- Descartado: abrir el PDF en una pestaña nueva (en standalone no comparte de forma fiable la cookie y saca
+  de la app) y `<object>` (mismo límite de 1ª página en iOS).
+
+**HTML → `<iframe sandbox>` SIN `allow-same-origin` + token de capacidad.** Servir el HTML desde el mismo
+origen sería XSS contra la propia app: su JS podría usar la sesión para la FS API o abrir `/ws/terminal`
+(= shell del VPS). Con sandbox el documento corre en un **origen opaco**. Consecuencia: sus peticiones
+(CSS/JS/imágenes relativos) son *cross-site* y la cookie `SameSite=Lax` no viaja → no pueden pasar el gate.
+Solución: `POST /api/fs/preview {path}` (con sesión) crea un **token aleatorio** (24 bytes) que autoriza
+`GET /api/preview/<token>/<ruta>` (montado **antes** del gate). Acotado: solo la **carpeta del .html** y
+subcarpetas, **ningún segmento que empiece por `.`** (.env, .git, traversal), **lista cerrada de
+extensiones web** (lo demás → 404), TTL de 20 min **renovado con el uso**, máx. 32 tokens vivos. Respuestas
+con `CSP: sandbox …` (aislada aunque se abra suelta), `Access-Control-Allow-Origin: *` (sin él no cargan
+`<script type=module>`, fuentes ni `fetch` desde un origen opaco; no expone nada que el token no dé ya),
+`Referrer-Policy: no-referrer`, `nosniff`, `no-store`; `sendFile` con `root` (Range para vídeo/audio en iOS).
+- **Riesgo residual aceptado** (en `bugs.md`): un HTML hostil puede leer y filtrar su propio token.
+- Descartado: `srcdoc` (no resuelve assets relativos), servir con la cookie (no viaja desde origen opaco),
+  subdominio aparte para previews (requiere DNS/NPM: desproporcionado para v1).
+
+**Endurecimiento asociado (`server/src/auth/site.ts`).** El iframe mete JS arbitrario *dentro* de la app;
+por si algún navegador adjuntara la cookie a sus peticiones, `requireAuth` (403 `cross_site`) y el upgrade
+de **todos los WS** (401) rechazan `Origin: null` y `Sec-Fetch-Site: cross-site|same-site`. Nada legítimo
+llega así (PWA y API comparten origen); `same-site` cubre otras apps del VPS en subdominios hermanos. Sin
+cabeceras Fetch Metadata (navegadores viejos) sigue cubriendo `SameSite=Lax`. Además `/raw` lleva
+`CSP: sandbox` (un `.svg` con `<script>` abierto suelto ya no corre en el origen de la app). Se evita a
+propósito comparar `Origin` con `Host` (dependería de cómo reenvía NPM la cabecera Host).
+
+**Verificación:** E2E en Chromium real contra un backend de prueba aislado: 45/45 (render, zoom, errores,
+assets relativos, y desde el iframe: cookie/top/API/WS/.env bloqueados).
+
+---
+
+### 2026-10-29 · Pegar en la Terminal desde el móvil: tecla `paste` con `clipboard.readText()`
+
+**Bug:** en el móvil no se podía pegar en la terminal (en PC sí). xterm captura la entrada en un textarea
+oculto de 1px; mantener pulsado cae en el canvas y iOS no ofrece "Pegar".
+
+**Decisión:** tecla `paste` en la KeyBar (tras `alt`, visible sin desplazar). Llama a
+`navigator.clipboard.readText()` **dentro del click** (iOS exige el gesto y muestra su burbuja "Pegar") y
+entrega el texto con `term.paste()` — no con `sendInput` a pelo — para que xterm normalice `\n`→`\r` y lo
+envuelva en **bracketed paste** si la app lo activó (zsh, `claude`): un bloque multilínea no se ejecuta línea
+a línea. El pegado desarma ctrl/alt. Si la promesa se rechaza (el usuario descartó la burbuja) → no-op. Sin
+la API (contexto no seguro) la tecla no se pinta.
+
+**Descartado:** (a) agrandar el textarea de xterm para que el long-press lo alcance — rompe el scroll táctil
+y la selección; (b) hoja con un `<textarea>` donde pegar y "Enviar" — más UI y un paso más para el caso
+normal; queda como fallback si `readText` resultara poco fiable en algún navegador.
+
+---
+
+### 2026-10-29 · El explorer recuerda carpetas abiertas y scroll al cambiar de vista (caché de módulo)
+
+**Bug:** al ir de Files a otra vista y volver, las carpetas abiertas aparecían cerradas. AppShell desmonta la
+vista inactiva (`key={view}`, §5) y la expansión vivía en `useState` de cada `TreeNode`.
+
+**Decisión:** `client/src/views/Files/treeCache.ts` — estado a **nivel de módulo** (memoria de la sesión):
+`expandedDirs` (Set de rutas absolutas), `listings` (último listado por carpeta) y `scroll` (ligado al
+workspace). Al remontar, el árbol se pinta **al instante desde la caché** y cada carpeta expandida (y la raíz)
+**se revalida en silencio** (stale-while-revalidate) → recoge lo que haya creado/borrado el agente sin el
+parpadeo de "cargando…". Como el árbol entra en el mismo commit, un `useLayoutEffect` en `FilesView`
+restaura el `scrollTop`. Re-expandir una carpeta ahora siempre refresca su listado (antes se cacheaba en el
+componente para siempre).
+
+**Descartado:** (a) **mantener las vistas montadas** (`display:none`) — cambia el contrato de AppShell para
+las 5 vistas y es justo lo que se evitó con el Chat (DESIGN §6.7: remontar árboles enormes mataba iOS);
+(b) **solo recordar `expandedDirs`** — vuelve el parpadeo por carpeta y el scroll no se puede restaurar
+porque la altura llega tarde; (c) **persistir en `localStorage`** — sobreviviría a que iOS mate la PWA, pero
+no se pidió; queda como mejora opcional (rutas borradas serían inocuas: su fila ya no se pinta).
+
+---
+
+### 2026-10-27 · Descargar archivos/carpetas sin navegar la página (fix PWA standalone iOS)
+
+**Síntomas reportados** (dos caras del mismo bug): (1) "descargar carpetas no hace nada, le doy al botón y
+no pasa nada, no sé si carga"; (2) "al descargar un archivo me sale la pantalla blanca de descarga de iOS,
+le doy, se descarga, pero para volver tengo que salir de la app y reabrir".
+
+**Causa.** La descarga (18ª sesión) era un `<a href={fsDownloadUrl} download>` que hace una **navegación de
+nivel de página**. El `manifest` declara `"display": "standalone"` → en iOS la PWA corre en un WKWebView
+**sin gestor de descargas ni botón atrás**:
+- **Archivo**: el webview navega a la vista de descarga de iOS; la PWA se queda ahí sin forma de volver →
+  hay que matar la app. 
+- **Carpeta (`.zip`)**: el webview no sabe previsualizar un zip y no tiene a dónde descargarlo → el toque
+  se traga en silencio (el botón "no hace nada").
+
+**Decisión: no navegar NUNCA la página para descargar.** Componente `DownloadLink` + helper
+`api/download.ts`:
+- **Fuera de la PWA** (escritorio, Android en pestaña, Safari normal): se deja el `<a download>` nativo
+  intacto — funciona y hace **streaming** (cero memoria). Se detecta con `display-mode: standalone` /
+  `navigator.standalone`.
+- **En standalone (iOS)**: se intercepta el click (`preventDefault`), se trae el recurso con `fetch`
+  (`credentials:'include'` → la cookie de sesión viaja, el gate de auth sigue valiendo) a un blob y se
+  entrega con la **Web Share API** (`navigator.share({files})` → hoja "Guardar en Archivos"), con fallback
+  a object URL + `<a download>` sintético. Nada toca `document.location` → la app no se atasca. Spinner
+  mientras trabaja (ataca el "no sé si carga").
+
+**Alternativas descartadas.**
+- `target="_blank"` / `window.open` para "salir a Safari": en iOS el almacenamiento de la PWA instalada
+  está **particionado** respecto a Safari → la cookie de sesión podría no estar y daría **401**. Además no
+  garantiza romper el standalone para URLs dentro de scope. La Web Share mantiene todo en el fetch con
+  cookie de la propia PWA.
+- Mantener el `<a download>` y solo arreglar el zip: no cubre el atasco del archivo.
+
+**Compromiso conocido (en `bugs.md`).** La Web Share exige el blob **en memoria**; un zip de carpeta enorme
+consume RAM. Y `navigator.share` requiere *transient activation*: si el `fetch` tarda > ~5 s (zip gigante
+por enlace lento) iOS puede rechazarlo con `NotAllowedError` → cae al fallback por object URL, que en
+standalone es menos fiable. Aceptable para herramienta de un solo usuario con carpetas de proyecto normales.
+
+---
+
 ### 2026-08-05 · El hilo del Chat se pinta con techo (la PWA se reiniciaba al volver a la vista)
 
 **Síntoma reportado:** "estoy en Chat, cambio de pestaña, vuelvo y la app peta / se reinicia" (PWA en

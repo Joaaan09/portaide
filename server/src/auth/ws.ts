@@ -4,6 +4,7 @@
 import type { IncomingMessage } from 'node:http';
 import { env } from '../config/env.js';
 import { verifyToken } from './session.js';
+import { isCrossSite } from './site.js';
 
 /** Sesión resuelta desde la cookie del upgrade. */
 export interface WsSession {
@@ -31,6 +32,9 @@ function readCookie(header: string, name: string): string | undefined {
  * válida — en cuyo caso el llamante debe rechazar el upgrade (no abrir el WS).
  */
 export function authenticateUpgrade(req: IncomingMessage): WsSession | null {
+  // Los WS no tienen CORS: sin esto, una página de otro sitio (o el iframe de
+  // la vista previa de HTML) podría abrir /ws/terminal si viajara la cookie.
+  if (isCrossSite(req)) return null;
   const header = req.headers.cookie;
   if (!header) return null;
   const token = readCookie(header, env.cookieName);

@@ -2,13 +2,14 @@
 // cambiar de carpeta (selector estilo VS Code) + explorer en árbol lazy.
 // Desde la 14ª sesión también es la casa del Source Control (§8.1): chip de
 // rama en la cabecera, panel de git en hoja inferior y marcas en el árbol.
-import { useMemo, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useWorkspace } from '../../workspace/WorkspaceProvider'
 import NavMenuButton from '../../components/NavMenuButton/NavMenuButton'
 import FolderPicker from '../../components/FolderPicker/FolderPicker'
 import FileTree from './FileTree'
 import SourceControl from './SourceControl'
 import { buildGitMarks, useGitStatus } from './useGitStatus'
+import { scroll } from './treeCache'
 import styles from './FilesView.module.css'
 
 /** basename de una ruta POSIX ('/a/b/c' → 'c'). */
@@ -24,6 +25,14 @@ export default function FilesView() {
   // Estado de git compartido por el chip, el panel y las marcas del árbol.
   const git = useGitStatus(workspace)
   const marks = useMemo(() => buildGitMarks(git.repo), [git.repo])
+
+  // Al volver de otra vista, recupera el scroll del explorer. El árbol se pinta
+  // en este mismo commit desde treeCache, así que la altura ya está ahí.
+  const bodyRef = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    if (!workspace || !bodyRef.current) return
+    bodyRef.current.scrollTop = scroll.workspace === workspace ? scroll.top : 0
+  }, [workspace])
 
   // Mientras se resuelve el workspace (GET /api/fs/context) mostramos carga.
   if (!workspace) {
@@ -100,7 +109,14 @@ export default function FilesView() {
         </div>
       </header>
 
-      <div className={styles.body}>
+      <div
+        ref={bodyRef}
+        className={styles.body}
+        onScroll={(e) => {
+          scroll.workspace = workspace
+          scroll.top = e.currentTarget.scrollTop
+        }}
+      >
         <p className={styles.eyebrow}>Explorer</p>
         {/* key={workspace} remonta el árbol al cambiar de carpeta de trabajo */}
         <FileTree key={workspace} rootPath={workspace} marks={marks} />

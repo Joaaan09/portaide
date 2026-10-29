@@ -12,33 +12,30 @@ import {
   writeFile,
   ApiError,
   isImagePath,
+  isPdfPath,
+  isHtmlPath,
   fsRawUrl,
-  fsDownloadUrl,
 } from '../../api/client'
 import { useOpenFiles } from '../../openfiles/OpenFilesProvider'
+import DownloadLink from '../../components/DownloadLink/DownloadLink'
 import CodeArea, { type CodeAreaHandle } from './CodeArea'
 import EditorTabs from './EditorTabs'
 import SymbolBar from './SymbolBar'
+import PdfPreview from './PdfPreview'
+import HtmlPreview from './HtmlPreview'
+import { basename, errText } from './fsText'
 import styles from './EditorView.module.css'
+import previewStyles from './Preview.module.css'
 
 // 'binary' = archivo no-texto no-imagen (readFile devolvió 415): ni se edita ni
-// se previsualiza, solo se descarga. Las imágenes ni pasan por aquí (§isImagePath).
+// se previsualiza, solo se descarga. Imágenes y PDFs ni pasan por aquí (§isMediaPath).
 type DocStatus = 'loading' | 'ready' | 'error' | 'binary'
 
-/** basename de una ruta POSIX ('/a/b/c.ts' → 'c.ts'). */
-function basename(p: string): string {
-  const parts = p.split('/').filter(Boolean)
-  return parts.length > 0 ? parts[parts.length - 1]! : p
-}
+// Un .html se edita como código o se ve renderizado (DESIGN.md §7.2).
+type HtmlMode = 'code' | 'preview'
 
-/** Traduce el código de error de la API a un texto sobrio. */
-function errText(err: unknown): string {
-  const code = err instanceof ApiError ? err.code : 'request_failed'
-  if (code === 'forbidden') return 'sin permisos'
-  if (code === 'not_found') return 'el archivo ya no existe'
-  if (code === 'too_large') return 'archivo demasiado grande'
-  return 'error de conexión'
-}
+/** Archivos que solo se VEN (visor propio desde /raw), nunca se leen como texto. */
+const isMediaPath = (p: string): boolean => isImagePath(p) || isPdfPath(p)
 
 /**
  * Previsualización de imagen (DESIGN.md §7). Carga el archivo crudo vía
@@ -53,9 +50,14 @@ function ImagePreview({ path }: { path: string }) {
       {state === 'error' ? (
         <div className={styles.overlay}>
           <p className={styles.overlayText}>no se pudo mostrar la imagen</p>
-          <a className={styles.retry} href={fsDownloadUrl(path)} download>
+          <DownloadLink
+            className={styles.retry}
+            path={path}
+            name={basename(path)}
+            ariaLabel={`Descargar ${basename(path)}`}
+          >
             ⤓ Descargar
-          </a>
+          </DownloadLink>
         </div>
       ) : (
         <>
@@ -133,6 +135,8 @@ export default function EditorView() {
   const [dirty, setDirty] = useState<Record<string, boolean>>({})
   const [saving, setSaving] = useState<Record<string, boolean>>({})
   const [saveError, setSaveError] = useState<Record<string, string>>({})
+  const [htmlMode, setHtmlMode] = useState<Record<string, HtmlMode>>({})
+  const [savedTick, setSavedTick] = useState<Record<string, number>>({}) // recarga la vista HTML
 
   const loadFile = useCallback((path: string) => {
     setStatus((s) => ({ ...s, [path]: 'loading' }))
@@ -162,14 +166,14 @@ export default function EditorView() {
       })
   }, [])
 
-  // Carga perezosa: la primera vez que un archivo se vuelve activo. Las imágenes
-  // NO se leen como texto (readFile las rechazaría con 415): se marcan como
-  // solicitadas y se pintan con <ImagePreview> directamente desde /raw.
+  // Carga perezosa: la primera vez que un archivo se vuelve activo. Imágenes y
+  // PDFs NO se leen como texto (readFile los rechazaría con 415): se marcan como
+  // solicitados y los pinta su visor (<ImagePreview>/<PdfPreview>) desde /raw.
   useEffect(() => {
     if (!activePath) return
     if (requestedRef.current.has(activePath)) return
     requestedRef.current.add(activePath)
-    if (isImagePath(activePath)) return
+    if (isMediaPath(activePath)) return
     loadFile(activePath)
   }, [activePath, loadFile])
 
@@ -185,6 +189,8 @@ export default function EditorView() {
     setDirty((d) => pruneRecord(d, open))
     setSaving((s) => pruneRecord(s, open))
     setSaveError((e) => pruneRecord(e, open))
+    setHtmlMode((m) => pruneRecord(m, open))
+    setSavedTick((t) => pruneRecord(t, open))
   }, [files])
 
   // Edición del archivo activo: espeja contenido y recalcula dirty (solo re-render
@@ -220,6 +226,7 @@ export default function EditorView() {
         // El contenido pudo cambiar durante el guardado → recalcula dirty.
         const now = contentRef.current.get(path) ?? content
         setDirty((d) => ({ ...d, [path]: now !== content }))
+        setSavedTick((t) => ({ ...t, [path]: (t[path] ?? 0) + 1 }))
       })
       .catch((err) => {
         setSaveError((e) => ({ ...e, [path]: errText(err) }))
@@ -260,14 +267,20 @@ export default function EditorView() {
 
   const active = activePath
   const activeIsImage = active ? isImagePath(active) : false
+  const activeIsPdf = active ? isPdfPath(active) : false
+  const activeIsMedia = activeIsImage || activeIsPdf
+  const activeIsHtml = active ? isHtmlPath(active) : false
+  const activePreview = activeIsHtml && !!active && htmlMode[active] === 'preview'
+  // ¿Se muestra el área de código? (no en visores ni en la vista de un .html)
+  const showCode = !!active && !activeIsMedia && !activePreview
   const activeStatus = active ? status[active] : undefined
   const activeTruncated = active ? !!truncated[active] : false
   const activeDirty = active ? !!dirty[active] : false
   const activeSaving = active ? !!saving[active] : false
   const activeSaveError = active ? saveError[active] : undefined
-  // Las imágenes no pasan por readFile → su status queda undefined; no debe
-  // disparar el overlay de carga del código (lo gestiona <ImagePreview>).
-  const isLoading = !activeIsImage && (activeStatus === undefined || activeStatus === 'loading')
+  // Imágenes/PDFs no pasan por readFile → su status queda undefined; no debe
+  // disparar el overlay de carga del código (lo gestiona su visor).
+  const isLoading = showCode && (activeStatus === undefined || activeStatus === 'loading')
 
   return (
     <main className={styles.view}>
@@ -284,15 +297,33 @@ export default function EditorView() {
       {active && (
         <div className={styles.header}>
           <Breadcrumb path={active} />
-          {activeIsImage ? (
-            <a
+          {activeIsHtml && (
+            <div className={previewStyles.modeSwitch} role="group" aria-label="Modo del archivo HTML">
+              {(['code', 'preview'] as const).map((mode) => {
+                const on = (htmlMode[active] ?? 'code') === mode
+                return (
+                  <button
+                    key={mode}
+                    type="button"
+                    className={on ? `${previewStyles.modeItem} ${previewStyles.modeActive}` : previewStyles.modeItem}
+                    aria-pressed={on}
+                    onClick={() => setHtmlMode((m) => ({ ...m, [active]: mode }))}
+                  >
+                    {mode === 'code' ? 'Código' : 'Vista'}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+          {activeIsMedia ? (
+            <DownloadLink
               className={styles.download}
-              href={fsDownloadUrl(active)}
-              download
-              aria-label={`Descargar ${basename(active)}`}
+              path={active}
+              name={basename(active)}
+              ariaLabel={`Descargar ${basename(active)}`}
             >
               ⤓ Descargar
-            </a>
+            </DownloadLink>
           ) : (
             !activeTruncated && (
               <button
@@ -331,10 +362,19 @@ export default function EditorView() {
       <div
         className={styles.stage}
         role="tabpanel"
-        aria-label={active ? `Editando ${basename(active)}` : 'Editor'}
+        aria-label={active ? `${showCode ? 'Editando' : 'Viendo'} ${basename(active)}` : 'Editor'}
       >
         {active && activeIsImage && <ImagePreview key={active} path={active} />}
-        {active && !activeIsImage && activeStatus === 'ready' && (
+        {active && activeIsPdf && <PdfPreview key={active} path={active} />}
+        {active && activePreview && (
+          <HtmlPreview
+            key={active}
+            path={active}
+            dirty={activeDirty}
+            reloadSignal={savedTick[active] ?? 0}
+          />
+        )}
+        {active && showCode && activeStatus === 'ready' && (
           <CodeArea
             key={active}
             path={active}
@@ -345,20 +385,20 @@ export default function EditorView() {
             registerHandle={registerHandle}
           />
         )}
-        {active && activeStatus === 'binary' && (
+        {active && showCode && activeStatus === 'binary' && (
           <div className={styles.overlay}>
             <span className={styles.binaryGlyph} aria-hidden="true">
               ▢
             </span>
             <p className={styles.overlayText}>archivo binario · no se puede editar</p>
-            <a
+            <DownloadLink
               className={styles.retry}
-              href={fsDownloadUrl(active)}
-              download
-              aria-label={`Descargar ${basename(active)}`}
+              path={active}
+              name={basename(active)}
+              ariaLabel={`Descargar ${basename(active)}`}
             >
               ⤓ Descargar
-            </a>
+            </DownloadLink>
           </div>
         )}
         {active && isLoading && (
@@ -367,25 +407,27 @@ export default function EditorView() {
             <p className={styles.overlayText}>cargando {basename(active)}…</p>
           </div>
         )}
-        {active && activeStatus === 'error' && (
+        {active && showCode && activeStatus === 'error' && (
           <div className={styles.overlay}>
             <p className={styles.overlayText}>{(active && loadError[active]) ?? 'error al cargar'}</p>
             <button type="button" className={styles.retry} onClick={() => loadFile(active)}>
               Reintentar
             </button>
-            <a
+            <DownloadLink
               className={styles.retry}
-              href={fsDownloadUrl(active)}
-              download
-              aria-label={`Descargar ${basename(active)}`}
+              path={active}
+              name={basename(active)}
+              ariaLabel={`Descargar ${basename(active)}`}
             >
               ⤓ Descargar
-            </a>
+            </DownloadLink>
           </div>
         )}
       </div>
 
-      <SymbolBar onInsert={insertSymbol} />
+      {/* Los símbolos solo sirven al teclear código; en los visores, su hueco
+          inferior (barra de nav + safe-area) lo reserva un separador vacío. */}
+      {showCode ? <SymbolBar onInsert={insertSymbol} /> : <div className={styles.navSpacer} aria-hidden="true" />}
     </main>
   )
 }

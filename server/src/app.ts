@@ -7,6 +7,7 @@ import { healthRouter } from './routes/health.js';
 import { authRouter } from './auth/routes.js';
 import { requireAuth } from './auth/middleware.js';
 import { fsRouter } from './fs/routes.js';
+import { previewRouter } from './fs/preview.js';
 import { gitRouter } from './git/routes.js';
 import { chatRouter } from './chat/routes.js';
 import { systemRouter } from './system/routes.js';
@@ -27,6 +28,9 @@ export function createApp(): express.Express {
   // --- Orden de montaje (CRÍTICO) -----------------------------------------
   app.use('/api/health', healthRouter); // PÚBLICO
   app.use('/api/auth', authRouter); // login/logout públicos; /me protegido dentro
+  // Vista previa de HTML: sin cookie (la pide un iframe sandbox de origen opaco),
+  // la autoriza un token de capacidad creado con sesión (POST /api/fs/preview).
+  app.use('/api/preview', previewRouter);
 
   // GATE: todo lo que se monte DEBAJO de esta línea hereda requireAuth.
   app.use('/api', requireAuth);

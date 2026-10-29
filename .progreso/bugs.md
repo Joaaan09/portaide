@@ -5,6 +5,19 @@
 
 ## Abiertos
 
+- [ ] **2026-10-29 · menor · seguridad (riesgo asumido) · vista previa HTML** — El token de
+  `/api/preview/<token>/…` va en la URL del iframe: un `.html` **malicioso** puede leer su propia URL y
+  filtrar el token → quien lo tenga lee los archivos con extensión web (html/css/js/json/imágenes…) de
+  **esa carpeta y subcarpetas**, sin dotfiles, mientras se use (TTL 20 min por inactividad). No da acceso a
+  la API, al shell ni a la sesión. Aceptado por ser herramienta personal y exigir abrir a propósito un HTML
+  hostil; si molesta: atar el token a la IP del cliente o acortar el TTL. `server/src/fs/preview.ts`.
+- [ ] **2026-10-27 · menor · descargas (standalone)** — La descarga en PWA (`DownloadLink` → Web Share)
+  trae el recurso **entero a memoria** antes de compartir: un `.zip` de carpeta muy grande puede consumir
+  mucha RAM en el móvil. Además `navigator.share` exige *transient activation*: si el `fetch` del zip tarda
+  > ~5 s (enlace lento), iOS puede rechazar con `NotAllowedError` → cae al fallback por object URL, que en
+  standalone es menos fiable (podría no guardar). Mitigaciones posibles: endpoint que dé `Content-Length`
+  para avisar antes de bajar, o descarga a disco por File System Access API (no en Safari iOS).
+  `client/src/api/download.ts`, `client/src/components/DownloadLink/DownloadLink.tsx`.
 - [ ] **2026-08-05 · menor · shell** — `AppShell` sigue remontando la vista al navegar
   (`key={view}`, para reproducir la animación de entrada). Ya no es peligroso —el hilo del Chat tiene
   techo de render (DESIGN §6.7)— pero cuesta: se pierde el **borrador del composer** y la posición de

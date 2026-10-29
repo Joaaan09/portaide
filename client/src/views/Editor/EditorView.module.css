@@ -491,6 +491,14 @@
 
 /* ---------- Movimiento (DESIGN.md §11) ---------- */
 
+/* Sustituto de la barra de símbolos en los visores: mismo hueco inferior
+   (barra de nav en modo bottombar + safe-area), sin teclas. */
+.navSpacer {
+  flex: none;
+  height: calc(var(--nav-inset, 0px) + env(safe-area-inset-bottom, 0px));
+  background: var(--surface);
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);

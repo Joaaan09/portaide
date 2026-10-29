@@ -4,6 +4,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { env } from '../config/env.js';
 import { verifyToken } from './session.js';
+import { isCrossSite } from './site.js';
 
 // Extiende el Request de Express con el usuario de la sesión.
 declare global {
@@ -16,6 +17,10 @@ declare global {
 }
 
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
+  if (isCrossSite(req)) {
+    res.status(403).json({ error: 'cross_site' });
+    return;
+  }
   const token = req.cookies?.[env.cookieName];
   const session = typeof token === 'string' ? verifyToken(token) : null;
   if (!session) {

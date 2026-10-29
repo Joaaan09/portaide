@@ -2,7 +2,116 @@
 
 > Léeme al empezar. Actualízame al terminar cada sesión.
 
-**Última actualización:** 2026-10-23 (18ª sesión)
+**Última actualización:** 2026-10-29 (21ª sesión; la 20ª corrió en paralelo)
+
+## 21ª sesión (2026-10-29) — Editor: visor de PDF + vista previa de HTML
+
+**Modo Directo** (pedido: "necesito poder previsualizar archivos como html y pdf"). **Commiteado y desplegado.**
+
+**Deploy (2026-10-29):** a petición del usuario, **un único commit en `staging`** con TODO lo pendiente
+(esta sesión + 19ª descargas PWA + 20ª explorer + pegar en Terminal). **Sin push.** Frontend redeployado
+(`docker compose up -d --build frontend`); backend reiniciado con `kill -TERM` al MainPID (systemd lo
+respawnea; no había turnos ni ptys vivos). Smoke por el nginx del frontend: health 200, `/api/preview` con
+token falso → 404, `/api/fs/context` sin cookie → 401 y con `Sec-Fetch-Site: cross-site` → 403, SPA nueva.
+Typecheck + build verdes; **E2E real en Chromium 45/45** (ver abajo). Corrió **en paralelo** con la 20ª
+(explorer) y otra del pegado en Terminal: no comparten archivos de código con esta.
+
+**Hecho:**
+- **PDF** (`client/src/views/Editor/PdfPreview.tsx` + `pdfjs.ts`): pdf.js **build legacy** cargado bajo
+  demanda (chunk aparte de ~500 KB + worker de 1,2 MB; el bundle principal no crece). Canvas por página,
+  solo se pintan las cercanas al viewport y se libera el bitmap de las lejanas (memoria de iOS); placeholders
+  con tamaño real; barra `n / N` + zoom `− 100% +` (pasos 100–300 %). Errores (dañado / contraseña / >25 MB)
+  → estado con `⤓ Descargar`. Sin capa de texto (no se selecciona texto ni hay enlaces) en v1.
+- **HTML** (`HtmlPreview.tsx`): segmented **`Código | Vista`** en la cabecera (abre en Código). Vista =
+  `<iframe sandbox>` sin `allow-same-origin` que carga la página y sus **assets relativos** vía token.
+  Aviso "sin guardar · se ve lo de disco"; `Guardar` recarga la vista; `↻` manual.
+- **Backend**: `server/src/fs/preview.ts` (tokens de capacidad: `POST /api/fs/preview` con sesión →
+  `GET /api/preview/<token>/<ruta>` **sin** cookie, montado antes del gate; solo la carpeta del .html, sin
+  dotfiles, extensiones web en lista cerrada, TTL 20 min por inactividad, CSP `sandbox` + ACAO `*` +
+  `no-referrer`). `fs/mime.ts` (mapa MIME compartido). `/raw` ahora con `CSP: sandbox`.
+- **Endurecimiento** (`server/src/auth/site.ts`): la API autenticada y el upgrade de **todos los WS**
+  rechazan `Origin: null` y `Sec-Fetch-Site: cross-site|same-site` (antes los WS no miraban el origen).
+- Barra de símbolos oculta en visores (imagen/PDF/Vista), con separador que respeta nav + safe-area.
+- `fsText.ts` (basename/errText compartidos). **Dep nueva:** `pdfjs-dist@^6.4.299` (ADR). DESIGN §7.2.
+
+**Verificación E2E** (backend de prueba aislado: puerto, BD y FS_ROOT propios; bundle compilado; Chromium
+headless con libs extraídas sin instalar): PDF de 3 páginas pintado a 2x, zoom y re-render, indicador de
+página, PDF roto → error; HTML con CSS/`<script type=module>`/SVG/`fetch` relativos funcionando; desde el
+iframe: origen `null`, cookie/`top`/API/`/ws/terminal`/`.env` **bloqueados**; editar → aviso → guardar
+recarga. HTTP: traversal/dotfiles/token falso → 404, cross-site/`Origin null` → 403/401.
+
+**Pendiente / siguiente:** **QA en el iPhone** (PWA) de todo lo desplegado: PDF largo (scroll, memoria, zoom),
+.html con assets, y que la app sigue bien tras el guard cross-site (login, chat, terminal, descargas). Más
+el QA pendiente de la 19ª (descargas) y la 20ª (explorer). Si todo va bien: push y merge `staging → main`.
+
+---
+
+## 20ª sesión (2026-10-29) — Fix: el explorer recuerda carpetas abiertas al cambiar de vista
+
+**Modo Directo** (bug fix acotado; sin subagentes). **Sin commit ni deploy.** Typecheck + build verdes.
+
+**Síntoma:** en Files, al ir a otra vista y volver, las carpetas abiertas aparecían cerradas.
+**Causa:** AppShell desmonta la vista inactiva y la expansión vivía en `useState` de cada `TreeNode`.
+
+**Hecho:**
+- **`client/src/views/Files/treeCache.ts`** (nuevo) — estado de módulo que sobrevive al desmontaje:
+  `expandedDirs`, `listings` (último listado por carpeta) y `scroll` (ligado al workspace).
+- **`FileTree.tsx`** — `TreeNode` y la raíz se inicializan desde la caché y **revalidan en silencio**
+  (stale-while-revalidate): sin parpadeo de "cargando…" y recogiendo cambios del agente. Re-expandir una
+  carpeta ahora refresca su listado.
+- **`FilesView.tsx`** — `onScroll` guarda la posición; `useLayoutEffect` la restaura al volver.
+- **DESIGN.md §8** ("Continuidad al navegar") y **ADR 2026-10-29** en `decisiones.md`.
+
+**Segundo fix de la sesión — pegar en la Terminal desde el móvil.** xterm escribe en un textarea oculto, así
+que mantener pulsado no ofrece "Pegar" (en PC sí va: Ctrl/Cmd+V llega al textarea). Nueva tecla **`paste`**
+en la `KeyBar` (tras `alt`): `navigator.clipboard.readText()` dentro del click (iOS muestra su burbuja
+"Pegar") → `TerminalHandle.paste()` → `term.paste()` (normaliza saltos + *bracketed paste*, sale por
+`onData` → pty; verificado en el bundle de xterm 6). Desarma ctrl/alt. Sin la API (http no seguro) la tecla
+no se pinta. Archivos: `KeyBar.tsx`, `TerminalPane.tsx`, `TerminalView.tsx`; DESIGN.md §9; ADR 2026-10-29.
+
+**Pendiente / siguiente:** QA en el iPhone — (1) Files: abrir carpetas anidadas, bajar con scroll, ir a
+Editor/Chat y volver: mismo árbol y misma posición; (2) Terminal: copiar un comando (y un bloque multilínea)
+fuera, tocar `paste` → burbuja "Pegar" → el texto entra en el prompt sin ejecutarse línea a línea. Sigue pendiente lo de la 19ª (QA de descargas en la PWA) y la 18ª.
+Opcional: persistir `expandedDirs` en `localStorage` para sobrevivir a que iOS mate la PWA.
+
+---
+
+## 19ª sesión (2026-10-27) — Fix: descargar archivos/carpetas en la PWA de iOS (no navegar la página)
+
+**Modo Directo** (bug fix acotado; sin subagentes). **Sin commit ni deploy.** Typecheck + build verdes.
+
+**Síntomas reportados** (dos caras del mismo bug): (1) "descargar carpetas no hace nada, le doy y no pasa
+nada"; (2) "al descargar un archivo sale la pantalla blanca de iOS, se descarga, pero para volver tengo que
+salir de la app y reabrir".
+
+**Causa.** La descarga de la 18ª era un `<a href download>` que hace una **navegación de nivel de página**.
+El `manifest` es `display: standalone` → el WKWebView de iOS **no tiene gestor de descargas ni botón atrás**:
+carpeta (`.zip`) → el toque se traga en silencio; archivo → la PWA queda atascada en la vista de descarga.
+
+**Hecho:**
+- **`client/src/api/download.ts`** (nuevo) — `isStandaloneDisplay()` + `downloadFsPath(path, name)`: trae
+  el recurso con `fetch` (`credentials:'include'` → cookie de sesión, auth intacta) y lo entrega por
+  **Web Share API** (`navigator.share({files})` → "Guardar en Archivos"), con fallback a object URL. **No
+  toca `document.location`** → la app no se atasca.
+- **`client/src/components/DownloadLink/DownloadLink.tsx`** + `.module.css` (nuevo) — enlace reutilizable:
+  fuera de la PWA deja el `<a download>` **nativo** (streaming, cero memoria); en standalone intercepta el
+  click y usa `downloadFsPath`, con **spinner `--accent`** mientras trabaja (el botón ya nunca queda mudo).
+- **Cableado:** `FileTree.tsx` (acción `⤓` por fila; carpeta → `name.zip`) y las **4 descargas** del
+  `EditorView.tsx` (cabecera de imagen, binario, fallback de imagen, error de carga). Se quita `fsDownloadUrl`
+  de esos dos imports (ahora solo lo usa `DownloadLink`/`download.ts`).
+- **DESIGN.md** §7.1 y §8 actualizadas; **ADR 2026-10-27** en `decisiones.md`; compromiso conocido (RAM del
+  zip en memoria + *transient activation* de `navigator.share` en zips enormes) en `bugs.md`.
+
+**Verificación:** `npm run typecheck` y `npm --prefix client run build` **verdes**. No hay forma de probar la
+Web Share en headless (es específica de iOS) → **falta QA en el iPhone**.
+
+**Pendiente / siguiente:** **QA en el iPhone (PWA)** — (1) descargar un **archivo** desde el Editor y desde
+Files: debe aparecer la hoja "Guardar en Archivos" y, al cerrarla, **seguir en la app** (ya NO atascarse);
+(2) descargar una **carpeta**: el `⤓` muestra spinner y luego la hoja con el `.zip`. Ojo compromiso: una
+carpeta muy grande carga el zip en memoria y, si el `fetch` tarda > ~5 s, `share` puede fallar (ver bugs.md).
+Y sigue pendiente lo de la 18ª (QA de ver imágenes inline), que convive con esto.
+
+---
 
 ## 18ª sesión (2026-10-23) — FS: ver imágenes inline + descargar archivos y carpetas (zip)
 
