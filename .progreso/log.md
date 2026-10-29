@@ -619,3 +619,4 @@ server la materializa (`POST /api/chat/engine/sessions/:id/open` + `seedFromEngi
 - **2026-10-29 (23ª, cierre)** — Commit `39631eb` en `staging`; backend reiniciado (`kill -TERM` → systemd lo
 relanza, sin turnos/ptys vivos) + `docker compose up -d --build frontend`. Smoke OK (health 200, POST open
 401 sin cookie, PATCH 1,5 MB ya no da 413). Sin merge a `main` ni push (falta QA en el iPhone).
+- **2026-10-29 (23ª, merge)** — Merge ff `staging → main` a petición del usuario (antes del QA en el iPhone). Sin push.

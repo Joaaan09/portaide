@@ -7,8 +7,8 @@
 ## 23ª sesión (2026-10-29) — Fix: abrir conversaciones de Claude Code (VS Code) mostraba el hilo vacío
 
 **Modo Directo** (pedido: "cuando abro una conversación desde portaide que era de aquí claude code, no
-veo el historial"). **Commit `39631eb` en `staging` y desplegado** (a petición del usuario). Sin merge a
-`main` (falta QA en el iPhone) y sin push.
+veo el historial"). **Commit `39631eb` en `staging`, desplegado y merge ff `staging → main`** (a petición
+del usuario, antes del QA en el iPhone). **Sin push.**
 
 **Deploy:** backend reiniciado sin sudo (`kill -TERM` al MainPID → systemd `Restart=always` lo relanza;
 antes se comprobó que no colgaban turnos de chat ni ptys) → PID 805378, health 200 · `docker compose up -d
@@ -31,8 +31,7 @@ un backend aislado (puerto/BD/secreto propios) con el transcript real de 3,4 MB 
 respeta el rename, 400/404/401 y GET antiguo retirado. Reproducido antes el 413 contra el contenedor real.
 
 **Pendiente / siguiente:** **QA en el iPhone** abriendo una conversación grande de VS Code (si la PWA
-cacheó el bundle viejo, recargar: el cliente viejo llama al GET retirado y no abriría nada). Si va bien:
-merge `staging → main`. Límite: lo que se siga en VS Code tras materializarla no se relee.
+cacheó el bundle viejo, recargar: el cliente viejo llama al GET retirado y no abriría nada). Límite: lo que se siga en VS Code tras materializarla no se relee.
 
 ## 22ª sesión (2026-10-29) — Editor: pasar de imagen sin volver a Files
 
