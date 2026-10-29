@@ -616,3 +616,6 @@ la pestaña se mueva. DESIGN §7.1 + ADR. Typecheck/build verdes, E2E Chromium m
 Causa: el hilo volvía en un PATCH >1 MB → 413 del nginx del frontend, ignorado por el cliente. Ahora el
 server la materializa (`POST /api/chat/engine/sessions/:id/open` + `seedFromEngine`), `client_max_body_size
 5m`. Typecheck/build verdes, E2E HTTP+WS 13/13 (transcript de 3,4 MB). Sin commit/deploy.
+- **2026-10-29 (23ª, cierre)** — Commit `39631eb` en `staging`; backend reiniciado (`kill -TERM` → systemd lo
+relanza, sin turnos/ptys vivos) + `docker compose up -d --build frontend`. Smoke OK (health 200, POST open
+401 sin cookie, PATCH 1,5 MB ya no da 413). Sin merge a `main` ni push (falta QA en el iPhone).

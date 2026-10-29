@@ -7,7 +7,13 @@
 ## 23ª sesión (2026-10-29) — Fix: abrir conversaciones de Claude Code (VS Code) mostraba el hilo vacío
 
 **Modo Directo** (pedido: "cuando abro una conversación desde portaide que era de aquí claude code, no
-veo el historial"). En `staging`, **sin commit ni deploy** (pendiente de OK del usuario).
+veo el historial"). **Commit `39631eb` en `staging` y desplegado** (a petición del usuario). Sin merge a
+`main` (falta QA en el iPhone) y sin push.
+
+**Deploy:** backend reiniciado sin sudo (`kill -TERM` al MainPID → systemd `Restart=always` lo relanza;
+antes se comprobó que no colgaban turnos de chat ni ptys) → PID 805378, health 200 · `docker compose up -d
+--build frontend` → bundle `index-ofgFPMtH.js`. Smoke por el nginx del frontend: health 200, `POST …/open`
+sin cookie 401 (llega al backend), PATCH de 1,5 MB → 401 (antes 413).
 
 **Causa:** el hilo del transcript viajaba al cliente y volvía en un PATCH; con >1 MB el nginx del
 frontend respondía **413** (default) y el cliente hacía `attach` igualmente → pestaña vacía sin aviso.
@@ -24,10 +30,9 @@ un backend aislado (puerto/BD/secreto propios) con el transcript real de 3,4 MB 
 ~1 s): pestaña ya suscrita recibe el hilo, attach nuevo completo, fila en SQLite, re-open idempotente que
 respeta el rename, 400/404/401 y GET antiguo retirado. Reproducido antes el 413 contra el contenedor real.
 
-**Pendiente / siguiente:** OK → commit + **deploy de AMBOS**: `npm run build` (ya hecho, `server/dist` al
-día) + `sudo systemctl restart portaide-backend` **y** `docker compose up -d --build frontend` (el cliente
-viejo llama al GET retirado → no abre nada; el nuevo necesita el POST: van juntos). QA en el iPhone con
-una conversación grande. Límite: lo que se siga en VS Code tras materializarla no se relee.
+**Pendiente / siguiente:** **QA en el iPhone** abriendo una conversación grande de VS Code (si la PWA
+cacheó el bundle viejo, recargar: el cliente viejo llama al GET retirado y no abriría nada). Si va bien:
+merge `staging → main`. Límite: lo que se siga en VS Code tras materializarla no se relee.
 
 ## 22ª sesión (2026-10-29) — Editor: pasar de imagen sin volver a Files
 
